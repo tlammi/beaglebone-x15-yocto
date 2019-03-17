@@ -20,7 +20,7 @@ KCONF_BSP_AUDIT_LEVEL = "2"
 KERNEL_DEVICETREE_qemuarm = "versatile-pb.dtb"
 
 
-#KERNEL_EXTRA_ARGS += "LOADADDR=${UBOOT_ENTRYPOINT}"
+KERNEL_EXTRA_ARGS += "LOADADDR=${UBOOT_ENTRYPOINT}"
 #COMPATIBLE_MACHINE = "qemuarm|qemuarm64|qemux86|qemuppc|qemumips|qemumips64|qemux86-64"
 COMPATIBLE_MACHINE = "am57xx-evm"
 # Functionality flags
@@ -32,6 +32,16 @@ COMPATIBLE_MACHINE = "am57xx-evm"
 #KERNEL_FEATURES_append = " ${@bb.utils.contains("TUNE_FEATURES", "mx32", " cfg/x32.scc", "" ,d)}"
 
 
+do_add_xenomai_to_work_shared() {
+	echo asdfasdfasdf
+	SHARED_PATH="${TMPDIR}/work-shared/${MACHINE}/xenomai"
+	PRIV_PATH="${WORKDIR}/xenomai"
+
+	if [ ! -e ${SHARED_PATH} ]; then
+		ln -snf ${PRIV_PATH} ${SHARED_PATH}
+	fi
+
+}
 
 do_prepare_kernel(){
 
@@ -43,3 +53,5 @@ do_prepare_kernel(){
 }
 
 addtask do_prepare_kernel after do_patch before do_configure
+
+addtask do_add_xenomai_to_work_shared after do_unpack before do_patch
