@@ -33,7 +33,6 @@ COMPATIBLE_MACHINE = "am57xx-evm"
 
 
 do_add_xenomai_to_work_shared() {
-	echo asdfasdfasdf
 	SHARED_PATH="${TMPDIR}/work-shared/${MACHINE}/xenomai"
 	PRIV_PATH="${WORKDIR}/xenomai"
 
