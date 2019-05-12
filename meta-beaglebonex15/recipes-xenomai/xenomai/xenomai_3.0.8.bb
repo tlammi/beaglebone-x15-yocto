@@ -77,4 +77,4 @@ do_install() {
 }
 
 
-#addtask do_bootstrap before do_configure
+addtask do_bootstrap before do_configure
