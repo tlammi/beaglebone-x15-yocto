@@ -27,6 +27,7 @@ FILES_${PN}-dev += "/usr/lib/*.so"
 FILES_${PN} += "/dev"
 FILES_${PN} += "/usr/xenomai/bin/*"
 FILES_${PN} += "/usr/xenomai/lib/*.so.*"
+FILES_${PN} += "/usr/xenomai/lib/xenomai/*.o"
 FILES_${PN} += "/usr/xenomai/sbin/*"
 FILES_${PN} += "/usr/xenomai/include/*"
 FILES_${PN} += "/usr/xenomai/demo/*"
@@ -34,10 +35,10 @@ FILES_${PN} += "/usr/xenomai/etc/*"
 
 #INSANE_SKIP_${PN} += "ldflags"
 
-do_bootstrap() {
-	cd ${XENOMAI_SOURCE}
+do_configure_prepend() {
+	#cd ${XENOMAI_SOURCE}
 
-	./scripts/bootstrap
+	#./scripts/bootstrap
 }
 
 do_configure() {
@@ -66,6 +67,7 @@ do_install() {
 	mkdir -p ${D}/usr/xenomai/include
 	mkdir -p ${D}/usr/xenomai/demo
 	mkdir -p ${D}/usr/xenomai/etc
+	mkdir -p ${D}/usr/xenomai/lib/xenomai/
 
 	cp -R ${B}/dev ${D}/dev
 	cp -R ${B}/usr/xenomai/bin/* ${D}/usr/xenomai/bin/
@@ -74,7 +76,8 @@ do_install() {
 	cp -R ${B}/usr/xenomai/include/* ${D}/usr/xenomai/include/
 	cp -R ${B}/usr/xenomai/demo/* ${D}/usr/xenomai/demo/
 	cp -R ${B}/usr/xenomai/etc/* ${D}/usr/xenomai/etc/
+	cp -R ${B}/usr/xenomai/lib/xenomai/*.o ${D}/usr/xenomai/lib/
 }
 
 
-addtask do_bootstrap before do_configure
+#addtask do_bootstrap before do_configure
