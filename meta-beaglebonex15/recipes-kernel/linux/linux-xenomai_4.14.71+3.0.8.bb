@@ -33,25 +33,12 @@ COMPATIBLE_MACHINE = "am57xx-evm"
 #KERNEL_FEATURES_append = " ${@bb.utils.contains("TUNE_FEATURES", "mx32", " cfg/x32.scc", "" ,d)}"
 
 
-do_add_xenomai_to_work_shared() {
-	SHARED_PATH="${TMPDIR}/work-shared/${MACHINE}/xenomai"
-	PRIV_PATH="${WORKDIR}/xenomai"
-
-	if [ ! -e ${SHARED_PATH} ]; then
-		ln -snf ${PRIV_PATH} ${SHARED_PATH}
-	fi
-
-}
-
 do_prepare_kernel(){
 
 	linux_src="${S}"
-	xenomai_src="${WORKDIR}/xenomai"
-	echo "${xenomai_src}/scripts/prepare-kernel.sh --arch=arm --linux=${linux_src}"
 
-	${xenomai_src}/scripts/prepare-kernel.sh --arch=arm --linux=${linux_src}
+	${WORKDIR}/xenomai/scripts/prepare-kernel.sh --arch=arm --linux=${linux_src}
 }
 
 addtask do_prepare_kernel after do_patch before do_configure
 
-addtask do_add_xenomai_to_work_shared after do_unpack before do_patch
