@@ -1,0 +1,12 @@
+diff --git a/arch/arm/boot/dts/dra7.dtsi b/arch/arm/boot/dts/dra7.dtsi
+index 02a136a4661a..096d67353a0f 100644
+--- a/arch/arm/boot/dts/dra7.dtsi
++++ b/arch/arm/boot/dts/dra7.dtsi
+@@ -573,6 +573,7 @@
+ 			#gpio-cells = <2>;
+ 			interrupt-controller;
+ 			#interrupt-cells = <2>;
++			status = "disabled";
+ 		};
+ 
+ 		gpio8: gpio@48053000 {
