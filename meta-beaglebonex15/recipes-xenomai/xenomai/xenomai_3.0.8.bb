@@ -26,3 +26,7 @@ FILES_${PN} += "\
 
 EXTRA_OECONF += "--enable-smp --with-core=cobalt"
 
+do_install_append(){
+	sed -i 's~${WORKDIR}/recipe-sysroot~\${SDKTARGETSYSROOT}~g' ${D}/usr/bin/xeno-config
+}
+
