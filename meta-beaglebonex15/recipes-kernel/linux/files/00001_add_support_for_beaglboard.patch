@@ -1,0 +1,4660 @@
+diff --git a/arch/arm/boot/dts/am57xx-beagle-x15-common.dtsi b/arch/arm/boot/dts/am57xx-beagle-x15-common.dtsi
+index 49aeecd312b4..ff74e319de01 100644
+--- a/arch/arm/boot/dts/am57xx-beagle-x15-common.dtsi
++++ b/arch/arm/boot/dts/am57xx-beagle-x15-common.dtsi
+@@ -10,6 +10,7 @@
+ #include "dra74x.dtsi"
+ #include "am57xx-commercial-grade.dtsi"
+ #include "dra74x-mmc-iodelay.dtsi"
++#include "dra74-ipu-dsp-common.dtsi"
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/interrupt-controller/irq.h>
+ 
+@@ -21,6 +22,9 @@
+ 		rtc1 = &tps659038_rtc;
+ 		rtc2 = &rtc;
+ 		display0 = &hdmi0;
++
++		sound0 = &sound0;
++		sound1 = &hdmi;
+ 	};
+ 
+ 	chosen {
+@@ -32,6 +36,61 @@
+ 		reg = <0x0 0x80000000 0x0 0x80000000>;
+ 	};
+ 
++	reserved-memory {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
++		ipu2_memory_region: ipu2-memory@95800000 {
++			compatible = "shared-dma-pool";
++			reg = <0x0 0x95800000 0x0 0x3800000>;
++			reusable;
++			status = "okay";
++		};
++
++		dsp1_memory_region: dsp1-memory@99000000 {
++			compatible = "shared-dma-pool";
++			reg = <0x0 0x99000000 0x0 0x4000000>;
++			reusable;
++			status = "okay";
++		};
++
++		ipu1_memory_region: ipu1-memory@9d000000 {
++			compatible = "shared-dma-pool";
++			reg = <0x0 0x9d000000 0x0 0x2000000>;
++			reusable;
++			status = "okay";
++		};
++
++		dsp2_memory_region: dsp2-memory@9f000000 {
++			compatible = "shared-dma-pool";
++			reg = <0x0 0x9f000000 0x0 0x800000>;
++			reusable;
++			status = "okay";
++		};
++	};
++
++	main_12v0: fixedregulator-main_12v0 {
++		/* main supply */
++		compatible = "regulator-fixed";
++		regulator-name = "main_12v0";
++		regulator-min-microvolt = <12000000>;
++		regulator-max-microvolt = <12000000>;
++		regulator-always-on;
++		regulator-boot-on;
++	};
++
++	evm_5v0: fixedregulator-evm_5v0 {
++		/* Output of TPS54531D */
++		compatible = "regulator-fixed";
++		regulator-name = "evm_5v0";
++		regulator-min-microvolt = <5000000>;
++		regulator-max-microvolt = <5000000>;
++		vin-supply = <&main_12v0>;
++		regulator-always-on;
++		regulator-boot-on;
++	};
++
+ 	vdd_3v3: fixedregulator-vdd_3v3 {
+ 		compatible = "regulator-fixed";
+ 		regulator-name = "vdd_3v3";
+@@ -388,7 +447,7 @@
+ };
+ 
+ &cpu0 {
+-	cpu0-supply = <&smps12_reg>;
++	vdd-supply = <&smps12_reg>;
+ 	voltage-tolerance = <1>;
+ };
+ 
+@@ -442,9 +501,10 @@
+ 	pinctrl-0 = <&mmc2_pins_default>;
+ 
+ 	vmmc-supply = <&vdd_3v3>;
++	vqmmc-supply = <&vdd_3v3>;
+ 	bus-width = <8>;
+-	ti,non-removable;
+-	cap-mmc-dual-data-rate;
++	non-removable;
++	no-1-8-v;
+ };
+ 
+ &sata {
+@@ -526,12 +586,20 @@
+        };
+ };
+ 
++&gpu {
++	status = "ok";
++};
++
+ &dss {
+ 	status = "ok";
+ 
+ 	vdda_video-supply = <&ldoln_reg>;
+ };
+ 
++&bb2d {
++	status = "okay";
++};
++
+ &hdmi {
+ 	status = "ok";
+ 	vdda-supply = <&ldo4_reg>;
+@@ -568,22 +636,38 @@
+ 	rx-num-evt = <32>;
+ };
+ 
+-&mailbox5 {
++&pruss_soc_bus1 {
+ 	status = "okay";
+-	mbox_ipu1_ipc3x: mbox_ipu1_ipc3x {
+-		status = "okay";
+-	};
+-	mbox_dsp1_ipc3x: mbox_dsp1_ipc3x {
++
++	pruss1: pruss@0 {
+ 		status = "okay";
+ 	};
+ };
+ 
+-&mailbox6 {
++&pruss_soc_bus2 {
+ 	status = "okay";
+-	mbox_ipu2_ipc3x: mbox_ipu2_ipc3x {
+-		status = "okay";
+-	};
+-	mbox_dsp2_ipc3x: mbox_dsp2_ipc3x {
++
++	pruss2: pruss@0 {
+ 		status = "okay";
+ 	};
+ };
++
++&ipu2 {
++	status = "okay";
++	memory-region = <&ipu2_memory_region>;
++};
++
++&ipu1 {
++	status = "okay";
++	memory-region = <&ipu1_memory_region>;
++};
++
++&dsp1 {
++	status = "okay";
++	memory-region = <&dsp1_memory_region>;
++};
++
++&dsp2 {
++	status = "okay";
++	memory-region = <&dsp2_memory_region>;
++};
+diff --git a/arch/arm/boot/dts/dra7-ipu-dsp-common.dtsi b/arch/arm/boot/dts/dra7-ipu-dsp-common.dtsi
+new file mode 100644
+index 000000000000..90132c9d8fd1
+--- /dev/null
++++ b/arch/arm/boot/dts/dra7-ipu-dsp-common.dtsi
+@@ -0,0 +1,39 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Common IPU and DSP data for TI DRA7xx/AM57xx platforms
++ */
++
++&mailbox5 {
++	status = "okay";
++	mbox_ipu1_ipc3x: mbox_ipu1_ipc3x {
++		status = "okay";
++	};
++	mbox_dsp1_ipc3x: mbox_dsp1_ipc3x {
++		status = "okay";
++	};
++};
++
++&mailbox6 {
++	status = "okay";
++	mbox_ipu2_ipc3x: mbox_ipu2_ipc3x {
++		status = "okay";
++	};
++};
++
++&ipu2 {
++	mboxes = <&mailbox6 &mbox_ipu2_ipc3x>;
++	timers = <&timer3>;
++	watchdog-timers = <&timer4>, <&timer9>;
++};
++
++&ipu1 {
++	mboxes = <&mailbox5 &mbox_ipu1_ipc3x>;
++	timers = <&timer11>;
++	watchdog-timers = <&timer7>, <&timer8>;
++};
++
++&dsp1 {
++	mboxes = <&mailbox5 &mbox_dsp1_ipc3x>;
++	timers = <&timer5>;
++	watchdog-timers = <&timer10>;
++};
+diff --git a/arch/arm/boot/dts/dra7.dtsi b/arch/arm/boot/dts/dra7.dtsi
+index 02a136a4661a..12731012c72e 100644
+--- a/arch/arm/boot/dts/dra7.dtsi
++++ b/arch/arm/boot/dts/dra7.dtsi
+@@ -92,6 +92,8 @@
+ 			cooling-min-level = <0>;
+ 			cooling-max-level = <2>;
+ 			#cooling-cells = <2>; /* min followed by max */
++
++			vbb-supply = <&abb_mpu>;
+ 		};
+ 	};
+ 
+@@ -101,16 +103,26 @@
+ 
+ 		opp_nom-1000000000 {
+ 			opp-hz = /bits/ 64 <1000000000>;
+-			opp-microvolt = <1060000 850000 1150000>;
++			opp-microvolt = <1060000 850000 1150000>,
++					<1060000 850000 1150000>;
+ 			opp-supported-hw = <0xFF 0x01>;
+ 			opp-suspend;
+ 		};
+ 
+ 		opp_od-1176000000 {
+ 			opp-hz = /bits/ 64 <1176000000>;
+-			opp-microvolt = <1160000 885000 1160000>;
++			opp-microvolt = <1160000 885000 1160000>,
++					<1160000 885000 1160000>;
++
+ 			opp-supported-hw = <0xFF 0x02>;
+ 		};
++
++		opp_high@1500000000 {
++			opp-hz = /bits/ 64 <1500000000>;
++			opp-microvolt = <1210000 950000 1250000>,
++					<1210000 950000 1250000>;
++			opp-supported-hw = <0xFF 0x04>;
++		};
+ 	};
+ 
+ 	/*
+@@ -170,7 +182,7 @@
+ 						pbias_mmc_reg: pbias_mmc_omap5 {
+ 							regulator-name = "pbias_mmc_omap5";
+ 							regulator-min-microvolt = <1800000>;
+-							regulator-max-microvolt = <3000000>;
++							regulator-max-microvolt = <3300000>;
+ 						};
+ 					};
+ 
+@@ -309,11 +321,14 @@
+ 				ti,hwmods = "pcie1";
+ 				phys = <&pcie1_phy>;
+ 				phy-names = "pcie-phy0";
++				ti,syscon-conf = <&scm_conf>;
++				ti,syscon-pcie = <&scm_conf_pcie>;
+ 				interrupt-map-mask = <0 0 0 7>;
+ 				interrupt-map = <0 0 0 1 &pcie1_intc 1>,
+ 						<0 0 0 2 &pcie1_intc 2>,
+ 						<0 0 0 3 &pcie1_intc 3>,
+ 						<0 0 0 4 &pcie1_intc 4>;
++				ti,syscon-unaligned-access = <&scm_conf1 0x14 1>;
+ 				status = "disabled";
+ 				pcie1_intc: interrupt-controller {
+ 					interrupt-controller;
+@@ -333,7 +348,9 @@
+ 				ti,hwmods = "pcie1";
+ 				phys = <&pcie1_phy>;
+ 				phy-names = "pcie-phy0";
+-				ti,syscon-unaligned-access = <&scm_conf1 0x14 2>;
++				ti,syscon-unaligned-access = <&scm_conf1 0x14 1>;
++				ti,syscon-conf = <&scm_conf>;
++				ti,syscon-pcie = <&scm_conf_pcie>;
+ 				status = "disabled";
+ 			};
+ 		};
+@@ -345,7 +362,7 @@
+ 			ranges = <0x51800000 0x51800000 0x3000
+ 				  0x0	     0x30000000 0x10000000>;
+ 			status = "disabled";
+-			pcie@51800000 {
++			pcie2_rc: pcie@51800000 {
+ 				compatible = "ti,dra7-pcie";
+ 				reg = <0x51800000 0x2000>, <0x51802000 0x14c>, <0x1000 0x2000>;
+ 				reg-names = "rc_dbics", "ti_conf", "config";
+@@ -367,6 +384,7 @@
+ 						<0 0 0 2 &pcie2_intc 2>,
+ 						<0 0 0 3 &pcie2_intc 3>,
+ 						<0 0 0 4 &pcie2_intc 4>;
++				ti,syscon-unaligned-access = <&scm_conf1 0x14 2>;
+ 				pcie2_intc: interrupt-controller {
+ 					interrupt-controller;
+ 					#address-cells = <0>;
+@@ -999,12 +1017,45 @@
+ 		};
+ 
+ 		dmm@4e000000 {
+-			compatible = "ti,omap5-dmm";
++			compatible = "ti,dra7-dmm", "ti,omap5-dmm";
+ 			reg = <0x4e000000 0x800>;
+ 			interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
+ 			ti,hwmods = "dmm";
+ 		};
+ 
++		ipu1: ipu@58820000 {
++			compatible = "ti,dra7-ipu";
++			reg = <0x58820000 0x10000>;
++			reg-names = "l2ram";
++			ti,hwmods = "ipu1";
++			iommus = <&mmu_ipu1>;
++			ti,rproc-standby-info = <0x4a005520>;
++			status = "disabled";
++		};
++
++		ipu2: ipu@55020000 {
++			compatible = "ti,dra7-ipu";
++			reg = <0x55020000 0x10000>;
++			reg-names = "l2ram";
++			ti,hwmods = "ipu2";
++			iommus = <&mmu_ipu2>;
++			ti,rproc-standby-info = <0x4a008920>;
++			status = "disabled";
++		};
++
++		dsp1: dsp@40800000 {
++			compatible = "ti,dra7-dsp";
++			reg = <0x40800000 0x48000>,
++			      <0x40e00000 0x8000>,
++			      <0x40f00000 0x8000>;
++			reg-names = "l2ram", "l1pram", "l1dram";
++			ti,hwmods = "dsp1";
++			syscon-bootreg = <&scm_conf 0x55c>;
++			iommus = <&mmu0_dsp1>, <&mmu1_dsp1>;
++			ti,rproc-standby-info = <0x4a005420>;
++			status = "disabled";
++		};
++
+ 		i2c1: i2c@48070000 {
+ 			compatible = "ti,omap4-i2c";
+ 			reg = <0x48070000 0x100>;
+@@ -1056,54 +1107,50 @@
+ 		};
+ 
+ 		mmc1: mmc@4809c000 {
+-			compatible = "ti,omap4-hsmmc";
++			compatible = "ti,dra7-sdhci";
+ 			reg = <0x4809c000 0x400>;
+ 			interrupts = <GIC_SPI 78 IRQ_TYPE_LEVEL_HIGH>;
+ 			ti,hwmods = "mmc1";
+-			ti,dual-volt;
+-			ti,needs-special-reset;
+-			dmas = <&sdma_xbar 61>, <&sdma_xbar 62>;
+-			dma-names = "tx", "rx";
+ 			status = "disabled";
+ 			pbias-supply = <&pbias_mmc_reg>;
+ 			max-frequency = <192000000>;
++			mmc-ddr-1_8v;
+ 		};
+ 
+ 		mmc2: mmc@480b4000 {
+-			compatible = "ti,omap4-hsmmc";
++			compatible = "ti,dra7-sdhci";
+ 			reg = <0x480b4000 0x400>;
+ 			interrupts = <GIC_SPI 81 IRQ_TYPE_LEVEL_HIGH>;
+ 			ti,hwmods = "mmc2";
+-			ti,needs-special-reset;
+-			dmas = <&sdma_xbar 47>, <&sdma_xbar 48>;
+-			dma-names = "tx", "rx";
+ 			status = "disabled";
+ 			max-frequency = <192000000>;
++			/* SDR104/DDR50/SDR50 bits in CAPA2 is not supported */
++			sdhci-caps-mask = <0x7 0x0>;
++			mmc-hs200-1_8v;
++			mmc-ddr-1_8v;
+ 		};
+ 
+ 		mmc3: mmc@480ad000 {
+-			compatible = "ti,omap4-hsmmc";
++			compatible = "ti,dra7-sdhci";
+ 			reg = <0x480ad000 0x400>;
+ 			interrupts = <GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>;
+ 			ti,hwmods = "mmc3";
+-			ti,needs-special-reset;
+-			dmas = <&sdma_xbar 77>, <&sdma_xbar 78>;
+-			dma-names = "tx", "rx";
+ 			status = "disabled";
+ 			/* Errata i887 limits max-frequency of MMC3 to 64 MHz */
+ 			max-frequency = <64000000>;
++			/* SDMA is not supported */
++			sdhci-caps-mask = <0x0 0x400000>;
+ 		};
+ 
+ 		mmc4: mmc@480d1000 {
+-			compatible = "ti,omap4-hsmmc";
++			compatible = "ti,dra7-sdhci";
+ 			reg = <0x480d1000 0x400>;
+ 			interrupts = <GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>;
+ 			ti,hwmods = "mmc4";
+-			ti,needs-special-reset;
+-			dmas = <&sdma_xbar 57>, <&sdma_xbar 58>;
+-			dma-names = "tx", "rx";
+ 			status = "disabled";
+ 			max-frequency = <192000000>;
++			/* SDMA is not supported */
++			sdhci-caps-mask = <0x0 0x400000>;
+ 		};
+ 
+ 		mmu0_dsp1: mmu@40d01000 {
+@@ -1113,7 +1160,6 @@
+ 			ti,hwmods = "mmu0_dsp1";
+ 			#iommu-cells = <0>;
+ 			ti,syscon-mmuconfig = <&dsp1_system 0x0>;
+-			status = "disabled";
+ 		};
+ 
+ 		mmu1_dsp1: mmu@40d02000 {
+@@ -1123,7 +1169,6 @@
+ 			ti,hwmods = "mmu1_dsp1";
+ 			#iommu-cells = <0>;
+ 			ti,syscon-mmuconfig = <&dsp1_system 0x1>;
+-			status = "disabled";
+ 		};
+ 
+ 		mmu_ipu1: mmu@58882000 {
+@@ -1133,7 +1178,6 @@
+ 			ti,hwmods = "mmu_ipu1";
+ 			#iommu-cells = <0>;
+ 			ti,iommu-bus-err-back;
+-			status = "disabled";
+ 		};
+ 
+ 		mmu_ipu2: mmu@55082000 {
+@@ -1143,7 +1187,198 @@
+ 			ti,hwmods = "mmu_ipu2";
+ 			#iommu-cells = <0>;
+ 			ti,iommu-bus-err-back;
++		};
++
++		pruss_soc_bus1: pruss_soc_bus@4b226004 {
++			compatible = "ti,am5728-pruss-soc-bus";
++			reg = <0x4b226004 0x4>;
++			ti,hwmods = "pruss1";
++			#address-cells = <1>;
++			#size-cells = <1>;
++			ranges = <0x0 0x4b200000 0x80000>;
+ 			status = "disabled";
++
++			pruss1: pruss@0 {
++				compatible = "ti,am5728-pruss";
++				reg = <0x0 0x80000>;
++				interrupts = <GIC_SPI 186 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 187 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 188 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 191 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 192 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 193 IRQ_TYPE_LEVEL_HIGH>;
++				interrupt-names = "host2", "host3", "host4",
++						  "host5", "host6", "host7",
++						  "host8", "host9";
++				#address-cells = <1>;
++				#size-cells = <1>;
++				ranges;
++				status = "disabled";
++
++				pruss1_mem: memories@0 {
++					reg = <0x0 0x2000>,
++					      <0x2000 0x2000>,
++					      <0x10000 0x8000>;
++					reg-names = "dram0", "dram1",
++						    "shrdram2";
++				};
++
++				pruss1_cfg: cfg@26000 {
++					compatible = "syscon";
++					reg = <0x26000 0x2000>;
++				};
++
++				pruss1_iep: iep@2e000 {
++					compatible = "syscon";
++					reg = <0x2e000 0x31c>;
++				};
++
++				pruss1_mii_rt: mii_rt@32000 {
++					compatible = "syscon";
++					reg = <0x32000 0x58>;
++				};
++
++				pruss1_intc: intc@20000 {
++					compatible = "ti,am5728-pruss-intc";
++					reg = <0x20000 0x2000>;
++					reg-names = "intc";
++					interrupt-controller;
++					#interrupt-cells = <1>;
++				};
++
++				pru1_0: pru@34000 {
++					compatible = "ti,am5728-pru";
++					reg = <0x34000 0x3000>,
++					      <0x22000 0x400>,
++					      <0x22400 0x100>;
++					reg-names = "iram", "control", "debug";
++					firmware-name = "am57xx-pru1_0-fw";
++					interrupt-parent = <&pruss1_intc>;
++					interrupts = <16>, <17>;
++					interrupt-names = "vring", "kick";
++				};
++
++				pru1_1: pru@38000 {
++					compatible = "ti,am5728-pru";
++					reg = <0x38000 0x3000>,
++					      <0x24000 0x400>,
++					      <0x24400 0x100>;
++					reg-names = "iram", "control", "debug";
++					firmware-name = "am57xx-pru1_1-fw";
++					interrupt-parent = <&pruss1_intc>;
++					interrupts = <18>, <19>;
++					interrupt-names = "vring", "kick";
++				};
++
++				pruss1_mdio: mdio@32400 {
++					compatible = "ti,davinci_mdio";
++					#address-cells = <1>;
++					#size-cells = <0>;
++					clocks = <&dpll_gmac_h13x2_ck>;
++					clock-names = "fck";
++					bus_freq = <1000000>;
++					reg = <0x32400 0x90>;
++					status = "disabled";
++				};
++			};
++		};
++
++		pruss_soc_bus2: pruss_soc_bus@4b2a6004 {
++			compatible = "ti,am5728-pruss-soc-bus";
++			reg = <0x4b2a6004 0x4>;
++			ti,hwmods = "pruss2";
++			#address-cells = <1>;
++			#size-cells = <1>;
++			ranges = <0x0 0x4b280000 0x80000>;
++			status = "disabled";
++
++			pruss2: pruss@0 {
++				compatible = "ti,am5728-pruss";
++				reg = <0x0 0x80000>;
++				interrupts = <GIC_SPI 196 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 197 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 198 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 199 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 200 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 201 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 202 IRQ_TYPE_LEVEL_HIGH>,
++					     <GIC_SPI 203 IRQ_TYPE_LEVEL_HIGH>;
++				interrupt-names = "host2", "host3", "host4",
++						  "host5", "host6", "host7",
++						  "host8", "host9";
++				#address-cells = <1>;
++				#size-cells = <1>;
++				ranges;
++				status = "disabled";
++
++				pruss2_mem: memories@0 {
++					reg = <0x0 0x2000>,
++					      <0x2000 0x2000>,
++					      <0x10000 0x8000>;
++					reg-names = "dram0", "dram1",
++						    "shrdram2";
++				};
++
++				pruss2_cfg: cfg@26000 {
++					compatible = "syscon";
++					reg = <0x26000 0x2000>;
++				};
++
++				pruss2_iep: iep@2e000 {
++					compatible = "syscon";
++					reg = <0x2e000 0x31c>;
++				};
++
++				pruss2_mii_rt: mii_rt@32000 {
++					compatible = "syscon";
++					reg = <0x32000 0x58>;
++				};
++
++				pruss2_intc: intc@20000 {
++					compatible = "ti,am5728-pruss-intc";
++					reg = <0x20000 0x2000>;
++					reg-names = "intc";
++					interrupt-controller;
++					#interrupt-cells = <1>;
++				};
++
++				pru2_0: pru@34000 {
++					compatible = "ti,am5728-pru";
++					reg = <0x34000 0x3000>,
++					      <0x22000 0x400>,
++					      <0x22400 0x100>;
++					reg-names = "iram", "control", "debug";
++					firmware-name = "am57xx-pru2_0-fw";
++					interrupt-parent = <&pruss2_intc>;
++					interrupts = <16>, <17>;
++					interrupt-names = "vring", "kick";
++				};
++
++				pru2_1: pru@38000 {
++					compatible = "ti,am5728-pru";
++					reg = <0x38000 0x3000>,
++					      <0x24000 0x400>,
++					      <0x24400 0x100>;
++					reg-names = "iram", "control", "debug";
++					firmware-name = "am57xx-pru2_1-fw";
++					interrupt-parent = <&pruss2_intc>;
++					interrupts = <18>, <19>;
++					interrupt-names = "vring", "kick";
++				};
++
++				pruss2_mdio: mdio@32400 {
++					compatible = "ti,davinci_mdio";
++					#address-cells = <1>;
++					#size-cells = <0>;
++					clocks = <&dpll_gmac_h13x2_ck>;
++					clock-names = "fck";
++					bus_freq = <1000000>;
++					reg = <0x32400 0x90>;
++					status = "disabled";
++				};
++			};
+ 		};
+ 
+ 		abb_mpu: regulator-abb-mpu {
+@@ -1540,6 +1775,7 @@
+ 				dr_mode = "otg";
+ 				snps,dis_u3_susphy_quirk;
+ 				snps,dis_u2_susphy_quirk;
++				snps,dis_metastability_quirk;
+ 			};
+ 		};
+ 
+@@ -1818,7 +2054,7 @@
+ 			};
+ 		};
+ 
+-		dcan1: can@481cc000 {
++		dcan1: can@4ae3c000 {
+ 			compatible = "ti,dra7-d_can";
+ 			ti,hwmods = "dcan1";
+ 			reg = <0x4ae3c000 0x2000>;
+@@ -1828,7 +2064,7 @@
+ 			status = "disabled";
+ 		};
+ 
+-		dcan2: can@481d0000 {
++		dcan2: can@48480000 {
+ 			compatible = "ti,dra7-d_can";
+ 			ti,hwmods = "dcan2";
+ 			reg = <0x48480000 0x2000>;
+@@ -1838,6 +2074,28 @@
+ 			status = "disabled";
+ 		};
+ 
++		gpu: gpu@56000000 {
++			compatible = "ti,dra7-sgx544", "img,sgx544";
++			reg = <0x56000000 0x10000>;
++			reg-names = "gpu_ocp_base";
++			interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
++			ti,hwmods = "gpu";
++			clocks = <&l3_iclk_div>, <&gpu_core_gclk_mux>,
++				<&gpu_hyd_gclk_mux>;
++			clock-names = "iclk", "fclk1", "fclk2";
++			status = "disabled";
++		};
++
++		bb2d: bb2d@59000000 {
++			compatible = "ti,dra7-bb2d";
++			reg = <0x59000000 0x0700>;
++			interrupts = <GIC_SPI 120 IRQ_TYPE_LEVEL_HIGH>;
++			ti,hwmods = "bb2d";
++			clocks = <&dpll_core_h24x2_ck>;
++			clock-names = "fclk";
++			status = "disabled";
++		};
++
+ 		dss: dss@58000000 {
+ 			compatible = "ti,dra7-dss";
+ 			/* 'reg' defined in dra72x.dtsi and dra74x.dtsi */
+@@ -1873,6 +2131,8 @@
+ 				ti,hwmods = "dss_hdmi";
+ 				clocks = <&dss_48mhz_clk>, <&dss_hdmi_clk>;
+ 				clock-names = "fck", "sys_clk";
++				dmas = <&sdma_xbar 76>;
++				dma-names = "audio_tx";
+ 			};
+ 		};
+ 
+@@ -2018,6 +2278,96 @@
+ 			clocks = <&l3_iclk_div>;
+ 			clock-names = "fck";
+ 		};
++
++		opp_supply_mpu: opp-supply@4a003b20 {
++			compatible = "ti,omap5-opp-supply";
++			reg = <0x4a003b20 0xc>;
++			ti,efuse-settings = <
++			/* uV   offset */
++			1060000 0x0
++			1160000 0x4
++			1210000 0x8
++			>;
++			ti,absolute-max-voltage-uv = <1500000>;
++		};
++
++		vpe {
++			compatible = "ti,vpe";
++			ti,hwmods = "vpe";
++			clocks = <&dpll_core_h23x2_ck>;
++			clock-names = "fck";
++			reg = <0x489d0000 0x120>,
++			      <0x489d0300 0x20>,
++			      <0x489d0400 0x20>,
++			      <0x489d0500 0x20>,
++			      <0x489d0600 0x3c>,
++			      <0x489d0700 0x80>,
++			      <0x489d5700 0x18>,
++			      <0x489dd000 0x400>;
++			reg-names = "vpe_top",
++				    "vpe_chr_us0",
++				    "vpe_chr_us1",
++				    "vpe_chr_us2",
++				    "vpe_dei",
++				    "sc",
++				    "csc",
++				    "vpdma";
++			interrupts = <GIC_SPI 354 IRQ_TYPE_LEVEL_HIGH>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++		};
++
++		vip1: vip@0x48970000 {
++			compatible = "ti,vip1";
++			reg = <0x48970000 0x114>,
++			      <0x48975500 0xD8>,
++			      <0x48975700 0x18>,
++			      <0x48975800 0x80>,
++			      <0x48975a00 0xD8>,
++			      <0x48975c00 0x18>,
++			      <0x48975d00 0x80>,
++			      <0x4897d000 0x400>;
++			reg-names = "vip",
++				    "parser0",
++				    "csc0",
++				    "sc0",
++				    "parser1",
++				    "csc1",
++				    "sc1",
++				    "vpdma";
++			ti,hwmods = "vip1";
++			interrupts = <GIC_SPI 351 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 392 IRQ_TYPE_LEVEL_HIGH>;
++			/* CTRL_CORE_SMA_SW_1 */
++			syscon-pol = <&scm_conf 0x534>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++			vin1a: port@0 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <0>;
++				status = "disabled";
++			};
++			vin2a: port@1 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <1>;
++				status = "disabled";
++			};
++			vin1b: port@2 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <2>;
++				status = "disabled";
++			};
++			vin2b: port@3 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <3>;
++				status = "disabled";
++			};
++		};
+ 	};
+ 
+ 	thermal_zones: thermal-zones {
+diff --git a/arch/arm/boot/dts/dra74-ipu-dsp-common.dtsi b/arch/arm/boot/dts/dra74-ipu-dsp-common.dtsi
+new file mode 100644
+index 000000000000..3a42fcd69e5f
+--- /dev/null
++++ b/arch/arm/boot/dts/dra74-ipu-dsp-common.dtsi
+@@ -0,0 +1,18 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Common IPU and DSP data for TI DRA74x/DRA76x/AM572x/AM574x platforms
++ */
++
++#include "dra7-ipu-dsp-common.dtsi"
++
++&mailbox6 {
++	mbox_dsp2_ipc3x: mbox_dsp2_ipc3x {
++		status = "okay";
++	};
++};
++
++&dsp2 {
++	mboxes = <&mailbox6 &mbox_dsp2_ipc3x>;
++	timers = <&timer6>;
++	watchdog-timers = <&timer13>;
++};
+diff --git a/arch/arm/boot/dts/dra74x-mmc-iodelay.dtsi b/arch/arm/boot/dts/dra74x-mmc-iodelay.dtsi
+index 28ebb4eb884a..30af5a03a852 100644
+--- a/arch/arm/boot/dts/dra74x-mmc-iodelay.dtsi
++++ b/arch/arm/boot/dts/dra74x-mmc-iodelay.dtsi
+@@ -49,6 +49,17 @@
+ 		>;
+ 	};
+ 
++	mmc1_pins_default_no_clk_pu: mmc1_pins_default_no_clk_pu {
++		pinctrl-single,pins = <
++			DRA7XX_CORE_IOPAD(0x3754, PIN_INPUT_PULLDOWN | MUX_MODE0) /* mmc1_clk.clk */
++			DRA7XX_CORE_IOPAD(0x3758, PIN_INPUT_PULLUP | MUX_MODE0) /* mmc1_cmd.cmd */
++			DRA7XX_CORE_IOPAD(0x375c, PIN_INPUT_PULLUP | MUX_MODE0) /* mmc1_dat0.dat0 */
++			DRA7XX_CORE_IOPAD(0x3760, PIN_INPUT_PULLUP | MUX_MODE0) /* mmc1_dat1.dat1 */
++			DRA7XX_CORE_IOPAD(0x3764, PIN_INPUT_PULLUP | MUX_MODE0) /* mmc1_dat2.dat2 */
++			DRA7XX_CORE_IOPAD(0x3768, PIN_INPUT_PULLUP | MUX_MODE0) /* mmc1_dat3.dat3 */
++		>;
++	};
++
+ 	mmc1_pins_sdr12: mmc1_pins_sdr12 {
+ 		pinctrl-single,pins = <
+ 			DRA7XX_CORE_IOPAD(0x3754, PIN_INPUT_PULLUP | MUX_MODE0)	/* mmc1_clk.clk */
+diff --git a/arch/arm/boot/dts/dra74x.dtsi b/arch/arm/boot/dts/dra74x.dtsi
+index 24e6746c5b26..7d7311daae85 100644
+--- a/arch/arm/boot/dts/dra74x.dtsi
++++ b/arch/arm/boot/dts/dra74x.dtsi
+@@ -21,6 +21,13 @@
+ 		};
+ 	};
+ 
++	aliases {
++		rproc0 = &ipu1;
++		rproc1 = &ipu2;
++		rproc2 = &dsp1;
++		rproc3 = &dsp2;
++	};
++
+ 	pmu {
+ 		compatible = "arm,cortex-a15-pmu";
+ 		interrupt-parent = <&wakeupgen>;
+@@ -65,7 +72,6 @@
+ 			ti,hwmods = "mmu0_dsp2";
+ 			#iommu-cells = <0>;
+ 			ti,syscon-mmuconfig = <&dsp2_system 0x0>;
+-			status = "disabled";
+ 		};
+ 
+ 		mmu1_dsp2: mmu@41502000 {
+@@ -75,8 +81,112 @@
+ 			ti,hwmods = "mmu1_dsp2";
+ 			#iommu-cells = <0>;
+ 			ti,syscon-mmuconfig = <&dsp2_system 0x1>;
++		};
++
++		dsp2: dsp@41000000 {
++			compatible = "ti,dra7-dsp";
++			reg = <0x41000000 0x48000>,
++			      <0x41600000 0x8000>,
++			      <0x41700000 0x8000>;
++			reg-names = "l2ram", "l1pram", "l1dram";
++			ti,hwmods = "dsp2";
++			syscon-bootreg = <&scm_conf 0x560>;
++			iommus = <&mmu0_dsp2>, <&mmu1_dsp2>;
++			ti,rproc-standby-info = <0x4a005620>;
+ 			status = "disabled";
+ 		};
++
++		vip2: vip@0x48990000 {
++			compatible = "ti,vip2";
++			reg = <0x48990000 0x114>,
++			      <0x48995500 0xD8>,
++			      <0x48995700 0x18>,
++			      <0x48995800 0x80>,
++			      <0x48995a00 0xD8>,
++			      <0x48995c00 0x18>,
++			      <0x48995d00 0x80>,
++			      <0x4899d000 0x400>;
++			reg-names = "vip",
++				    "parser0",
++				    "csc0",
++				    "sc0",
++				    "parser1",
++				    "csc1",
++				    "sc1",
++				    "vpdma";
++			ti,hwmods = "vip2";
++			interrupts = <GIC_SPI 352 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 393 IRQ_TYPE_LEVEL_HIGH>;
++			/* CTRL_CORE_SMA_SW_1 */
++			syscon-pol = <&scm_conf 0x534>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++			vin3a: port@0 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <0>;
++				status = "disabled";
++			};
++			vin4a: port@1 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <1>;
++				status = "disabled";
++			};
++			vin3b: port@2 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <2>;
++				status = "disabled";
++			};
++			vin4b: port@3 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <3>;
++				status = "disabled";
++			};
++		};
++
++		vip3: vip@0x489b0000 {
++			compatible = "ti,vip3";
++			reg = <0x489b0000 0x114>,
++			      <0x489b5500 0xD8>,
++			      <0x489b5700 0x18>,
++			      <0x489b5800 0x80>,
++			      <0x489b5a00 0xD8>,
++			      <0x489b5c00 0x18>,
++			      <0x489b5d00 0x80>,
++			      <0x489bd000 0x400>;
++			reg-names = "vip",
++				    "parser0",
++				    "csc0",
++				    "sc0",
++				    "parser1",
++				    "csc1",
++				    "sc1",
++				    "vpdma";
++			ti,hwmods = "vip3";
++			interrupts = <GIC_SPI 353 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 394 IRQ_TYPE_LEVEL_HIGH>;
++			/* CTRL_CORE_SMA_SW_1 */
++			syscon-pol = <&scm_conf 0x534>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++			status = "disabled";
++			vin5a: port@0 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <0>;
++				status = "disabled";
++			};
++			vin6a: port@1 {
++				#address-cells = <1>;
++				#size-cells = <0>;
++				reg = <1>;
++				status = "disabled";
++			};
++		};
+ 	};
+ };
+ 
+@@ -124,3 +234,15 @@
+ 		status = "disabled";
+ 	};
+ };
++
++&pcie1_rc {
++	compatible = "ti,dra746-pcie-rc", "ti,dra7-pcie";
++};
++
++&pcie1_ep {
++	compatible = "ti,dra746-pcie-ep", "ti,dra7-pcie-ep";
++};
++
++&pcie2_rc {
++	compatible = "ti,dra746-pcie-rc", "ti,dra7-pcie";
++};
+diff --git a/arch/arm/mach-omap2/Makefile b/arch/arm/mach-omap2/Makefile
+index 38f1748a4500..d483a9f21528 100644
+--- a/arch/arm/mach-omap2/Makefile
++++ b/arch/arm/mach-omap2/Makefile
+@@ -238,3 +238,9 @@ obj-$(CONFIG_MACH_OMAP2_TUSB6010)	+= usb-tusb6010.o
+ 
+ onenand-$(CONFIG_MTD_ONENAND_OMAP2)	:= gpmc-onenand.o
+ obj-y					+= $(onenand-m) $(onenand-y)
++
++obj-$(CONFIG_OMAP_IOMMU)                += omap-iommu.o
++ifneq ($(CONFIG_OMAP_REMOTEPROC),)
++obj-y                                   += remoteproc.o
++endif
++
+diff --git a/arch/arm/mach-omap2/omap-iommu.c b/arch/arm/mach-omap2/omap-iommu.c
+new file mode 100644
+index 000000000000..8f6b6b84de19
+--- /dev/null
++++ b/arch/arm/mach-omap2/omap-iommu.c
+@@ -0,0 +1,88 @@
++/*
++ * OMAP IOMMU quirks for various TI SoCs
++ *
++ * Copyright (C) 2015-2018 Texas Instruments Incorporated - http://www.ti.com/
++ *      Suman Anna <s-anna@ti.com>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License
++ * version 2 as published by the Free Software Foundation.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#include <linux/platform_device.h>
++#include <linux/err.h>
++
++#include "omap_hwmod.h"
++#include "omap_device.h"
++#include "clockdomain.h"
++#include "powerdomain.h"
++
++static void omap_iommu_dra7_emu_swsup_config(struct platform_device *pdev,
++					     bool enable)
++{
++	static struct clockdomain *emu_clkdm;
++	static DEFINE_SPINLOCK(emu_lock);
++	static atomic_t count;
++	struct device_node *np = pdev->dev.of_node;
++
++	if (!of_device_is_compatible(np, "ti,dra7-dsp-iommu"))
++		return;
++
++	if (!emu_clkdm) {
++		emu_clkdm = clkdm_lookup("emu_clkdm");
++		if (WARN_ON_ONCE(!emu_clkdm))
++			return;
++	}
++
++	spin_lock(&emu_lock);
++
++	if (enable && (atomic_inc_return(&count) == 1))
++		clkdm_deny_idle(emu_clkdm);
++	else if (!enable && (atomic_dec_return(&count) == 0))
++		clkdm_allow_idle(emu_clkdm);
++
++	spin_unlock(&emu_lock);
++}
++
++int omap_iommu_set_pwrdm_constraint(struct platform_device *pdev, bool request,
++				    u8 *pwrst)
++{
++	struct powerdomain *pwrdm;
++	struct omap_device *od;
++	u8 next_pwrst;
++	int ret = 0;
++
++	od = to_omap_device(pdev);
++	if (!od)
++		return -ENODEV;
++
++	if (od->hwmods_cnt != 1)
++		return -EINVAL;
++
++	pwrdm = omap_hwmod_get_pwrdm(od->hwmods[0]);
++	if (!pwrdm)
++		return -EINVAL;
++
++	if (request) {
++		*pwrst = pwrdm_read_next_pwrst(pwrdm);
++		omap_iommu_dra7_emu_swsup_config(pdev, true);
++	}
++
++	if (*pwrst > PWRDM_POWER_RET)
++		goto out;
++
++	next_pwrst = request ? PWRDM_POWER_ON : *pwrst;
++
++	ret = pwrdm_set_next_pwrst(pwrdm, next_pwrst);
++
++out:
++	if (!request)
++		omap_iommu_dra7_emu_swsup_config(pdev, false);
++
++	return ret;
++}
+diff --git a/arch/arm/mach-omap2/pdata-quirks.c b/arch/arm/mach-omap2/pdata-quirks.c
+index 6b433fce65a5..2cbff475222d 100644
+--- a/arch/arm/mach-omap2/pdata-quirks.c
++++ b/arch/arm/mach-omap2/pdata-quirks.c
+@@ -23,11 +23,12 @@
+ #include <linux/platform_data/pinctrl-single.h>
+ #include <linux/platform_data/hsmmc-omap.h>
+ #include <linux/platform_data/iommu-omap.h>
++#include <linux/platform_data/remoteproc-omap.h>
++#include <linux/platform_data/remoteproc-pruss.h>
+ #include <linux/platform_data/wkup_m3.h>
+-#include <linux/platform_data/pwm_omap_dmtimer.h>
+ #include <linux/platform_data/media/ir-rx51.h>
+ #include <linux/platform_data/asoc-ti-mcbsp.h>
+-#include <plat/dmtimer.h>
++#include <linux/platform_data/sgx-omap.h>
+ 
+ #include "common.h"
+ #include "common-board-devices.h"
+@@ -37,6 +38,7 @@
+ #include "omap-secure.h"
+ #include "soc.h"
+ #include "hsmmc.h"
++#include "remoteproc.h"
+ 
+ static struct omap_hsmmc_platform_data __maybe_unused mmc_pdata[2];
+ 
+@@ -48,6 +50,25 @@ struct pdata_init {
+ static struct of_dev_auxdata omap_auxdata_lookup[];
+ static struct twl4030_gpio_platform_data twl_gpio_auxdata;
+ 
++#if IS_ENABLED(CONFIG_OMAP_IOMMU)
++int omap_iommu_set_pwrdm_constraint(struct platform_device *pdev, bool request,
++				    u8 *pwrst);
++#else
++static inline int omap_iommu_set_pwrdm_constraint(struct platform_device *pdev,
++						  bool request, u8 *pwrst)
++{
++	return 0;
++}
++#endif
++
++#if defined(CONFIG_SOC_AM33XX) || defined(CONFIG_SOC_AM43XX)
++static struct gfx_sgx_platform_data sgx_pdata = {
++	.reset_name = "gfx",
++	.assert_reset = omap_device_assert_hardreset,
++	.deassert_reset = omap_device_deassert_hardreset,
++};
++#endif
++
+ #ifdef CONFIG_MACH_NOKIA_N8X0
+ static void __init omap2420_n8x0_legacy_init(void)
+ {
+@@ -92,6 +113,13 @@ static struct iommu_platform_data omap3_iommu_pdata = {
+ 	.reset_name = "mmu",
+ 	.assert_reset = omap_device_assert_hardreset,
+ 	.deassert_reset = omap_device_deassert_hardreset,
++	.device_enable = omap_device_enable,
++	.device_idle = omap_device_idle,
++};
++
++static struct iommu_platform_data omap3_iommu_isp_pdata = {
++	.device_enable = omap_device_enable,
++	.device_idle = omap_device_idle,
+ };
+ 
+ static int omap3_sbc_t3730_twl_callback(struct device *dev,
+@@ -412,11 +440,22 @@ static void __init omap3_pandora_legacy_init(void)
+ }
+ #endif /* CONFIG_ARCH_OMAP3 */
+ 
+-#if defined(CONFIG_ARCH_OMAP4) || defined(CONFIG_SOC_OMAP5)
++#if defined(CONFIG_ARCH_OMAP4) || defined(CONFIG_SOC_OMAP5) || \
++	defined(CONFIG_SOC_DRA7XX)
++static struct omap_rproc_pdata omap4_ipu_dsp_pdata = {
++	.device_enable = omap_rproc_device_enable,
++	.device_shutdown = omap_rproc_device_shutdown,
++};
++#endif
++
++#if defined(CONFIG_ARCH_OMAP4) || defined(CONFIG_SOC_OMAP5) || \
++	defined(CONFIG_SOC_DRA7XX)
+ static struct iommu_platform_data omap4_iommu_pdata = {
+ 	.reset_name = "mmu_cache",
+ 	.assert_reset = omap_device_assert_hardreset,
+ 	.deassert_reset = omap_device_deassert_hardreset,
++	.device_enable = omap_device_enable,
++	.device_idle = omap_device_idle,
+ };
+ #endif
+ 
+@@ -426,6 +465,12 @@ static struct wkup_m3_platform_data wkup_m3_data = {
+ 	.assert_reset = omap_device_assert_hardreset,
+ 	.deassert_reset = omap_device_deassert_hardreset,
+ };
++
++static struct pruss_platform_data pruss_pdata = {
++	.reset_name = "pruss",
++	.assert_reset = omap_device_assert_hardreset,
++	.deassert_reset = omap_device_deassert_hardreset,
++};
+ #endif
+ 
+ #ifdef CONFIG_SOC_OMAP5
+@@ -435,23 +480,19 @@ static void __init omap5_uevm_legacy_init(void)
+ #endif
+ 
+ #ifdef CONFIG_SOC_DRA7XX
+-static struct omap_hsmmc_platform_data dra7_hsmmc_data_mmc1;
+-static struct omap_hsmmc_platform_data dra7_hsmmc_data_mmc2;
+-static struct omap_hsmmc_platform_data dra7_hsmmc_data_mmc3;
+-
+-static void __init dra7x_evm_mmc_quirk(void)
+-{
+-	if (omap_rev() == DRA752_REV_ES1_1 || omap_rev() == DRA752_REV_ES1_0) {
+-		dra7_hsmmc_data_mmc1.version = "rev11";
+-		dra7_hsmmc_data_mmc1.max_freq = 96000000;
+-
+-		dra7_hsmmc_data_mmc2.version = "rev11";
+-		dra7_hsmmc_data_mmc2.max_freq = 48000000;
++static struct iommu_platform_data dra7_ipu1_dsp_iommu_pdata = {
++	.reset_name = "mmu_cache",
++	.assert_reset = omap_device_assert_hardreset,
++	.deassert_reset = omap_device_deassert_hardreset,
++	.device_enable = omap_device_enable,
++	.device_idle = omap_device_idle,
++	.set_pwrdm_constraint = omap_iommu_set_pwrdm_constraint,
++};
+ 
+-		dra7_hsmmc_data_mmc3.version = "rev11";
+-		dra7_hsmmc_data_mmc3.max_freq = 48000000;
+-	}
+-}
++static struct iommu_platform_data dra7_dsp_mmu_edma_pdata = {
++	.device_enable = omap_device_enable,
++	.device_idle = omap_device_idle,
++};
+ #endif
+ 
+ static struct pcs_pdata pcs_pdata;
+@@ -477,33 +518,6 @@ void omap_auxdata_legacy_init(struct device *dev)
+ 	dev->platform_data = &twl_gpio_auxdata;
+ }
+ 
+-/* Dual mode timer PWM callbacks platdata */
+-#if IS_ENABLED(CONFIG_OMAP_DM_TIMER)
+-static struct pwm_omap_dmtimer_pdata pwm_dmtimer_pdata = {
+-	.request_by_node = omap_dm_timer_request_by_node,
+-	.request_specific = omap_dm_timer_request_specific,
+-	.request = omap_dm_timer_request,
+-	.set_source = omap_dm_timer_set_source,
+-	.get_irq = omap_dm_timer_get_irq,
+-	.set_int_enable = omap_dm_timer_set_int_enable,
+-	.set_int_disable = omap_dm_timer_set_int_disable,
+-	.free = omap_dm_timer_free,
+-	.enable = omap_dm_timer_enable,
+-	.disable = omap_dm_timer_disable,
+-	.get_fclk = omap_dm_timer_get_fclk,
+-	.start = omap_dm_timer_start,
+-	.stop = omap_dm_timer_stop,
+-	.set_load = omap_dm_timer_set_load,
+-	.set_match = omap_dm_timer_set_match,
+-	.set_pwm = omap_dm_timer_set_pwm,
+-	.set_prescaler = omap_dm_timer_set_prescaler,
+-	.read_counter = omap_dm_timer_read_counter,
+-	.write_counter = omap_dm_timer_write_counter,
+-	.read_status = omap_dm_timer_read_status,
+-	.write_status = omap_dm_timer_write_status,
+-};
+-#endif
+-
+ static struct ir_rx51_platform_data __maybe_unused rx51_ir_data = {
+ 	.set_max_mpu_wakeup_lat = omap_pm_set_max_mpu_wakeup_lat,
+ };
+@@ -551,6 +565,8 @@ static struct of_dev_auxdata omap_auxdata_lookup[] __initdata = {
+ #ifdef CONFIG_ARCH_OMAP3
+ 	OF_DEV_AUXDATA("ti,omap2-iommu", 0x5d000000, "5d000000.mmu",
+ 		       &omap3_iommu_pdata),
++	OF_DEV_AUXDATA("ti,omap2-iommu", 0x480bd400, "480bd400.mmu",
++		       &omap3_iommu_isp_pdata),
+ 	OF_DEV_AUXDATA("ti,omap3-hsmmc", 0x4809c000, "4809c000.mmc", &mmc_pdata[0]),
+ 	OF_DEV_AUXDATA("ti,omap3-hsmmc", 0x480b4000, "480b4000.mmc", &mmc_pdata[1]),
+ 	OF_DEV_AUXDATA("nokia,n900-ir", 0, "n900-ir", &rx51_ir_data),
+@@ -567,13 +583,26 @@ static struct of_dev_auxdata omap_auxdata_lookup[] __initdata = {
+ #ifdef CONFIG_SOC_AM33XX
+ 	OF_DEV_AUXDATA("ti,am3352-wkup-m3", 0x44d00000, "44d00000.wkup_m3",
+ 		       &wkup_m3_data),
++	OF_DEV_AUXDATA("ti,am3356-pruss-soc-bus", 0x4a326004,
++		       "4a326004.pruss-soc-bus", &pruss_pdata),
++	OF_DEV_AUXDATA("ti,am3352-sgx530", 0x56000000, "56000000.sgx",
++		       &sgx_pdata),
+ #endif
+ #ifdef CONFIG_SOC_AM43XX
+ 	OF_DEV_AUXDATA("ti,am4372-wkup-m3", 0x44d00000, "44d00000.wkup_m3",
+ 		       &wkup_m3_data),
++	OF_DEV_AUXDATA("ti,am4376-pruss-soc-bus", 0x54426004,
++		       "54426004.pruss_soc_bus", &pruss_pdata),
++	OF_DEV_AUXDATA("ti,am4376-sgx530", 0x56000000, "56000000.sgx",
++		       &sgx_pdata),
+ #endif
+-#if IS_ENABLED(CONFIG_OMAP_DM_TIMER)
+-	OF_DEV_AUXDATA("ti,omap-dmtimer-pwm", 0, NULL, &pwm_dmtimer_pdata),
++#ifdef CONFIG_ARCH_OMAP4
++	OF_DEV_AUXDATA("ti,omap4-dsp", 0, "dsp", &omap4_ipu_dsp_pdata),
++	OF_DEV_AUXDATA("ti,omap4-ipu", 0x55020000, "ipu", &omap4_ipu_dsp_pdata),
++#endif
++#ifdef CONFIG_SOC_OMAP5
++	OF_DEV_AUXDATA("ti,omap5-dsp", 0, "dsp", &omap4_ipu_dsp_pdata),
++	OF_DEV_AUXDATA("ti,omap5-ipu", 0x55020000, "ipu", &omap4_ipu_dsp_pdata),
+ #endif
+ #if defined(CONFIG_ARCH_OMAP4) || defined(CONFIG_SOC_OMAP5)
+ 	OF_DEV_AUXDATA("ti,omap4-iommu", 0x4a066000, "4a066000.mmu",
+@@ -582,12 +611,26 @@ static struct of_dev_auxdata omap_auxdata_lookup[] __initdata = {
+ 		       &omap4_iommu_pdata),
+ #endif
+ #ifdef CONFIG_SOC_DRA7XX
+-	OF_DEV_AUXDATA("ti,dra7-hsmmc", 0x4809c000, "4809c000.mmc",
+-		       &dra7_hsmmc_data_mmc1),
+-	OF_DEV_AUXDATA("ti,dra7-hsmmc", 0x480b4000, "480b4000.mmc",
+-		       &dra7_hsmmc_data_mmc2),
+-	OF_DEV_AUXDATA("ti,dra7-hsmmc", 0x480ad000, "480ad000.mmc",
+-		       &dra7_hsmmc_data_mmc3),
++	OF_DEV_AUXDATA("ti,dra7-dsp-iommu", 0x40d01000, "40d01000.mmu",
++		       &dra7_ipu1_dsp_iommu_pdata),
++	OF_DEV_AUXDATA("ti,dra7-dsp-iommu", 0x41501000, "41501000.mmu",
++		       &dra7_ipu1_dsp_iommu_pdata),
++	OF_DEV_AUXDATA("ti,dra7-dsp-iommu", 0x40d02000, "40d02000.mmu",
++		       &dra7_dsp_mmu_edma_pdata),
++	OF_DEV_AUXDATA("ti,dra7-dsp-iommu", 0x41502000, "41502000.mmu",
++		       &dra7_dsp_mmu_edma_pdata),
++	OF_DEV_AUXDATA("ti,dra7-iommu", 0x55082000, "55082000.mmu",
++		       &omap4_iommu_pdata),
++	OF_DEV_AUXDATA("ti,dra7-iommu", 0x58882000, "58882000.mmu",
++		       &dra7_ipu1_dsp_iommu_pdata),
++	OF_DEV_AUXDATA("ti,dra7-ipu", 0x55020000, "55020000.ipu",
++		       &omap4_ipu_dsp_pdata),
++	OF_DEV_AUXDATA("ti,dra7-ipu", 0x58820000, "58820000.ipu",
++		       &omap4_ipu_dsp_pdata),
++	OF_DEV_AUXDATA("ti,dra7-dsp", 0x40800000, "40800000.dsp",
++		       &omap4_ipu_dsp_pdata),
++	OF_DEV_AUXDATA("ti,dra7-dsp", 0x41000000, "41000000.dsp",
++		       &omap4_ipu_dsp_pdata),
+ #endif
+ 	/* Common auxdata */
+ 	OF_DEV_AUXDATA("pinctrl-single", 0, NULL, &pcs_pdata),
+@@ -617,9 +660,6 @@ static struct pdata_init pdata_quirks[] __initdata = {
+ #endif
+ #ifdef CONFIG_SOC_OMAP5
+ 	{ "ti,omap5-uevm", omap5_uevm_legacy_init, },
+-#endif
+-#ifdef CONFIG_SOC_DRA7XX
+-	{ "ti,dra7-evm", dra7x_evm_mmc_quirk, },
+ #endif
+ 	{ /* sentinel */ },
+ };
+diff --git a/arch/arm/mach-omap2/remoteproc.c b/arch/arm/mach-omap2/remoteproc.c
+new file mode 100644
+index 000000000000..5606a992ea05
+--- /dev/null
++++ b/arch/arm/mach-omap2/remoteproc.c
+@@ -0,0 +1,119 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Remote processor machine-specific module for OMAP4+ SoCs
++ *
++ * Copyright (C) 2011-2018 Texas Instruments Incorporated - http://www.ti.com/
++ *      Suman Anna <s-anna@ti.com>
++ */
++
++#include <linux/kernel.h>
++
++#include "omap_device.h"
++#include "remoteproc.h"
++
++/**
++ * omap_rproc_device_enable - enable the remoteproc device
++ * @pdev: the rproc platform device
++ *
++ * This function performs the necessary low-level functions to enable
++ * a remoteproc device to start executing. This typically includes
++ * releasing the reset lines, and enabling the clocks for the device.
++ * We do not usually expect this function to fail.
++ *
++ * Return: 0 on success, or the return code from the failed function
++ */
++int omap_rproc_device_enable(struct platform_device *pdev)
++{
++	int ret = -EINVAL;
++	struct omap_device *od = to_omap_device(pdev);
++
++	if (!od) {
++		dev_err(&pdev->dev, "device does not have a backing omap_device\n");
++		goto out;
++	}
++
++	/*
++	 * This reset management follows a device name check to differentiate
++	 * DSP and IPU processor subsystems. This check is weak and is ok for
++	 * now because of the dependencies against the pdata-quirks, where
++	 * the devices are given specific device names that satisfy the
++	 * criteria for the check. It can easily be replaced with a stronger
++	 * check like device node compatibility check, if needed.
++	 */
++	if (strstr(dev_name(&pdev->dev), "dsp")) {
++		ret = omap_device_deassert_hardreset(pdev, "dsp");
++		if (ret)
++			goto out;
++	} else if (strstr(dev_name(&pdev->dev), "ipu")) {
++		ret = omap_device_deassert_hardreset(pdev, "cpu0");
++		if (ret)
++			goto out;
++
++		ret = omap_device_deassert_hardreset(pdev, "cpu1");
++		if (ret)
++			goto out;
++	} else {
++		dev_err(&pdev->dev, "unsupported remoteproc\n");
++		goto out;
++	}
++
++	ret = omap_device_enable(pdev);
++
++out:
++	if (ret)
++		dev_err(&pdev->dev, "%s failed, ret = %d\n", __func__, ret);
++	return ret;
++}
++
++/**
++ * omap_rproc_device_shutdown - shutdown the remoteproc device
++ * @pdev: the rproc platform device
++ *
++ * This function performs the necessary low-level functions to shutdown
++ * a remoteproc device. This typically includes disabling the clocks
++ * for the device and asserting the associated reset lines. We do not
++ * usually expect this function to fail.
++ *
++ * Return: 0 on success, or the return code from the failed function
++ */
++int omap_rproc_device_shutdown(struct platform_device *pdev)
++{
++	int ret = -EINVAL;
++	struct omap_device *od = to_omap_device(pdev);
++
++	if (!od) {
++		dev_err(&pdev->dev, "device does not have a backing omap_device\n");
++		goto out;
++	}
++
++	ret = omap_device_idle(pdev);
++	if (ret)
++		goto out;
++
++	/*
++	 * This reset management follows a device name check to differentiate
++	 * DSP and IPU processor subsystems. This check is weak and is ok for
++	 * now because of the dependencies against the pdata-quirks, where
++	 * the devices are given specific device names that satisfy the
++	 * criteria for the check. It can easily be replaced with a stronger
++	 * check like device node compatibility check, if needed.
++	 */
++	if (strstr(dev_name(&pdev->dev), "dsp")) {
++		ret = omap_device_assert_hardreset(pdev, "dsp");
++	} else if (strstr(dev_name(&pdev->dev), "ipu")) {
++		ret = omap_device_assert_hardreset(pdev, "cpu1");
++		if (ret)
++			goto out;
++
++		ret = omap_device_assert_hardreset(pdev, "cpu0");
++		if (ret)
++			goto out;
++	} else {
++		dev_err(&pdev->dev, "unsupported remoteproc\n");
++	}
++
++out:
++	if (ret)
++		dev_err(&pdev->dev, "%s failed, ret = %d\n", __func__, ret);
++	return ret;
++}
+diff --git a/arch/arm/mach-omap2/remoteproc.h b/arch/arm/mach-omap2/remoteproc.h
+new file mode 100644
+index 000000000000..d643b9dad721
+--- /dev/null
++++ b/arch/arm/mach-omap2/remoteproc.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Remote processor machine-specific quirks for OMAP4+ SoCs
++ *
++ * Copyright (C) 2014-2018 Texas Instruments Incorporated - http://www.ti.com/
++ *      Suman Anna <s-anna@ti.com>
++ */
++
++#ifndef __ARCH_ARM_MACH_OMAP2_REMOTEPROC_H
++#define __ARCH_ARM_MACH_OMAP2_REMOTEPROC_H
++
++#include "linux/platform_device.h"
++
++#if IS_ENABLED(CONFIG_OMAP_REMOTEPROC)
++int omap_rproc_device_enable(struct platform_device *pdev);
++int omap_rproc_device_shutdown(struct platform_device *pdev);
++#else
++static inline int omap_rproc_device_enable(struct platform_device *pdev)
++{
++	return 0;
++}
++
++static inline int omap_rproc_device_shutdown(struct platform_device *pdev)
++{
++	return 0;
++}
++#endif
++
++#endif
+diff --git a/drivers/clocksource/dw_apb_timer.c b/drivers/clocksource/dw_apb_timer.c
+index 092fc1572f1d..fd0589d1c361 100644
+--- a/drivers/clocksource/dw_apb_timer.c
++++ b/drivers/clocksource/dw_apb_timer.c
+@@ -421,7 +421,7 @@ static struct __ipipe_tscinfo apb_tsc_info = {
+  *
+  * @dw_cs:	The clocksource to register.
+  */
+-void dw_apb_clocksource_register(struct dw_apb_clocksource *dw_cs)
++void __init dw_apb_clocksource_register(struct dw_apb_clocksource *dw_cs)
+ {
+ 	clocksource_register_hz(&dw_cs->cs, dw_cs->timer.freq);
+ #ifdef CONFIG_IPIPE
+diff --git a/drivers/iommu/omap-iommu.c b/drivers/iommu/omap-iommu.c
+index 57960cb5e045..3199d086de17 100644
+--- a/drivers/iommu/omap-iommu.c
++++ b/drivers/iommu/omap-iommu.c
+@@ -2,6 +2,7 @@
+  * omap iommu: tlb and pagetable primitives
+  *
+  * Copyright (C) 2008-2010 Nokia Corporation
++ * Copyright (C) 2013-2017 Texas Instruments Incorporated - http://www.ti.com/
+  *
+  * Written by Hiroshi DOYU <Hiroshi.DOYU@nokia.com>,
+  *		Paul Mundt and Toshihiro Kobayashi
+@@ -68,16 +69,29 @@ static struct omap_iommu_domain *to_omap_domain(struct iommu_domain *dom)
+ /**
+  * omap_iommu_save_ctx - Save registers for pm off-mode support
+  * @dev:	client device
++ *
++ * This should be treated as an deprecated API. It is preserved only
++ * to maintain existing functionality for OMAP3 ISP driver.
+  **/
+ void omap_iommu_save_ctx(struct device *dev)
+ {
+-	struct omap_iommu *obj = dev_to_omap_iommu(dev);
+-	u32 *p = obj->ctx;
++	struct omap_iommu_arch_data *arch_data = dev->archdata.iommu;
++	struct omap_iommu *obj;
++	u32 *p;
+ 	int i;
+ 
+-	for (i = 0; i < (MMU_REG_SIZE / sizeof(u32)); i++) {
+-		p[i] = iommu_read_reg(obj, i * sizeof(u32));
+-		dev_dbg(obj->dev, "%s\t[%02d] %08x\n", __func__, i, p[i]);
++	if (!arch_data)
++		return;
++
++	while (arch_data->iommu_dev) {
++		obj = arch_data->iommu_dev;
++		p = obj->ctx;
++		for (i = 0; i < (MMU_REG_SIZE / sizeof(u32)); i++) {
++			p[i] = iommu_read_reg(obj, i * sizeof(u32));
++			dev_dbg(obj->dev, "%s\t[%02d] %08x\n", __func__, i,
++				p[i]);
++		}
++		arch_data++;
+ 	}
+ }
+ EXPORT_SYMBOL_GPL(omap_iommu_save_ctx);
+@@ -85,16 +99,29 @@ EXPORT_SYMBOL_GPL(omap_iommu_save_ctx);
+ /**
+  * omap_iommu_restore_ctx - Restore registers for pm off-mode support
+  * @dev:	client device
++ *
++ * This should be treated as an deprecated API. It is preserved only
++ * to maintain existing functionality for OMAP3 ISP driver.
+  **/
+ void omap_iommu_restore_ctx(struct device *dev)
+ {
+-	struct omap_iommu *obj = dev_to_omap_iommu(dev);
+-	u32 *p = obj->ctx;
++	struct omap_iommu_arch_data *arch_data = dev->archdata.iommu;
++	struct omap_iommu *obj;
++	u32 *p;
+ 	int i;
+ 
+-	for (i = 0; i < (MMU_REG_SIZE / sizeof(u32)); i++) {
+-		iommu_write_reg(obj, p[i], i * sizeof(u32));
+-		dev_dbg(obj->dev, "%s\t[%02d] %08x\n", __func__, i, p[i]);
++	if (!arch_data)
++		return;
++
++	while (arch_data->iommu_dev) {
++		obj = arch_data->iommu_dev;
++		p = obj->ctx;
++		for (i = 0; i < (MMU_REG_SIZE / sizeof(u32)); i++) {
++			iommu_write_reg(obj, p[i], i * sizeof(u32));
++			dev_dbg(obj->dev, "%s\t[%02d] %08x\n", __func__, i,
++				p[i]);
++		}
++		arch_data++;
+ 	}
+ }
+ EXPORT_SYMBOL_GPL(omap_iommu_restore_ctx);
+@@ -169,36 +196,18 @@ static void omap2_iommu_disable(struct omap_iommu *obj)
+ 
+ static int iommu_enable(struct omap_iommu *obj)
+ {
+-	int err;
+-	struct platform_device *pdev = to_platform_device(obj->dev);
+-	struct iommu_platform_data *pdata = dev_get_platdata(&pdev->dev);
+-
+-	if (pdata && pdata->deassert_reset) {
+-		err = pdata->deassert_reset(pdev, pdata->reset_name);
+-		if (err) {
+-			dev_err(obj->dev, "deassert_reset failed: %d\n", err);
+-			return err;
+-		}
+-	}
+-
+-	pm_runtime_get_sync(obj->dev);
++	int ret;
+ 
+-	err = omap2_iommu_enable(obj);
++	ret = pm_runtime_get_sync(obj->dev);
++	if (ret < 0)
++		pm_runtime_put_noidle(obj->dev);
+ 
+-	return err;
++	return ret < 0 ? ret : 0;
+ }
+ 
+ static void iommu_disable(struct omap_iommu *obj)
+ {
+-	struct platform_device *pdev = to_platform_device(obj->dev);
+-	struct iommu_platform_data *pdata = dev_get_platdata(&pdev->dev);
+-
+-	omap2_iommu_disable(obj);
+-
+ 	pm_runtime_put_sync(obj->dev);
+-
+-	if (pdata && pdata->assert_reset)
+-		pdata->assert_reset(pdev, pdata->reset_name);
+ }
+ 
+ /*
+@@ -805,7 +814,7 @@ static irqreturn_t iommu_fault_handler(int irq, void *data)
+ 	struct iommu_domain *domain = obj->domain;
+ 	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
+ 
+-	if (!omap_domain->iommu_dev)
++	if (!omap_domain->dev)
+ 		return IRQ_NONE;
+ 
+ 	errs = iommu_report_fault(obj, &da);
+@@ -884,15 +893,237 @@ static void omap_iommu_detach(struct omap_iommu *obj)
+ 
+ 	dma_unmap_single(obj->dev, obj->pd_dma, IOPGD_TABLE_SIZE,
+ 			 DMA_TO_DEVICE);
+-	iommu_disable(obj);
+ 	obj->pd_dma = 0;
+ 	obj->iopgd = NULL;
++	iommu_disable(obj);
+ 
+ 	spin_unlock(&obj->iommu_lock);
+ 
+ 	dev_dbg(obj->dev, "%s: %s\n", __func__, obj->name);
+ }
+ 
++static void omap_iommu_save_tlb_entries(struct omap_iommu *obj)
++{
++	struct iotlb_lock lock;
++	struct cr_regs cr;
++	struct cr_regs *tmp;
++	int i;
++
++	/* check if there are any locked tlbs to save */
++	iotlb_lock_get(obj, &lock);
++	obj->num_cr_ctx = lock.base;
++	if (!obj->num_cr_ctx)
++		return;
++
++	tmp = obj->cr_ctx;
++	for_each_iotlb_cr(obj, obj->num_cr_ctx, i, cr)
++		*tmp++ = cr;
++}
++
++static void omap_iommu_restore_tlb_entries(struct omap_iommu *obj)
++{
++	struct iotlb_lock l;
++	struct cr_regs *tmp;
++	int i;
++
++	/* no locked tlbs to restore */
++	if (!obj->num_cr_ctx)
++		return;
++
++	l.base = 0;
++	tmp = obj->cr_ctx;
++	for (i = 0; i < obj->num_cr_ctx; i++, tmp++) {
++		l.vict = i;
++		iotlb_lock_set(obj, &l);
++		iotlb_load_cr(obj, tmp);
++	}
++	l.base = obj->num_cr_ctx;
++	l.vict = i;
++	iotlb_lock_set(obj, &l);
++}
++
++/**
++ * omap_iommu_domain_deactivate - deactivate attached iommu devices
++ * @domain: iommu domain attached to the target iommu device
++ *
++ * This API allows the client devices of IOMMU devices to suspend
++ * the IOMMUs they control at runtime, after they are idled and
++ * suspended all activity. System Suspend will leverage the PM
++ * driver late callbacks.
++ **/
++int omap_iommu_domain_deactivate(struct iommu_domain *domain)
++{
++	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
++	struct omap_iommu_device *iommu;
++	struct omap_iommu *oiommu;
++	int i;
++
++	if (!omap_domain->dev)
++		return 0;
++
++	iommu = omap_domain->iommus;
++	iommu += (omap_domain->num_iommus - 1);
++	for (i = 0; i < omap_domain->num_iommus; i++, iommu--) {
++		oiommu = iommu->iommu_dev;
++		pm_runtime_put_sync(oiommu->dev);
++	}
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(omap_iommu_domain_deactivate);
++
++/**
++ * omap_iommu_domain_activate - activate attached iommu devices
++ * @domain: iommu domain attached to the target iommu device
++ *
++ * This API allows the client devices of IOMMU devices to resume the
++ * IOMMUs they control at runtime, before they can resume operations.
++ * System Resume will leverage the PM driver late callbacks.
++ **/
++int omap_iommu_domain_activate(struct iommu_domain *domain)
++{
++	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
++	struct omap_iommu_device *iommu;
++	struct omap_iommu *oiommu;
++	int i;
++
++	if (!omap_domain->dev)
++		return 0;
++
++	iommu = omap_domain->iommus;
++	for (i = 0; i < omap_domain->num_iommus; i++, iommu++) {
++		oiommu = iommu->iommu_dev;
++		pm_runtime_get_sync(oiommu->dev);
++	}
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(omap_iommu_domain_activate);
++
++/**
++ * omap_iommu_runtime_suspend - disable an iommu device
++ * @dev:	iommu device
++ *
++ * This function performs all that is necessary to disable an
++ * IOMMU device, either during final detachment from a client
++ * device, or during system/runtime suspend of the device. This
++ * includes programming all the appropriate IOMMU registers, and
++ * managing the associated omap_hwmod's state and the device's
++ * reset line. This function also saves the context of any
++ * locked TLBs if suspending.
++ **/
++static int omap_iommu_runtime_suspend(struct device *dev)
++{
++	struct platform_device *pdev = to_platform_device(dev);
++	struct iommu_platform_data *pdata = dev_get_platdata(dev);
++	struct omap_iommu *obj = to_iommu(dev);
++	int ret;
++
++	/* save the TLBs only during suspend, and not for power down */
++	if (obj->domain && obj->iopgd)
++		omap_iommu_save_tlb_entries(obj);
++
++	omap2_iommu_disable(obj);
++
++	if (pdata && pdata->device_idle)
++		pdata->device_idle(pdev);
++
++	if (pdata && pdata->assert_reset)
++		pdata->assert_reset(pdev, pdata->reset_name);
++
++	if (pdata && pdata->set_pwrdm_constraint) {
++		ret = pdata->set_pwrdm_constraint(pdev, false, &obj->pwrst);
++		if (ret) {
++			dev_warn(obj->dev, "pwrdm_constraint failed to be reset, status = %d\n",
++				 ret);
++		}
++	}
++
++	return 0;
++}
++
++/**
++ * omap_iommu_runtime_resume - enable an iommu device
++ * @dev:	iommu device
++ *
++ * This function performs all that is necessary to enable an
++ * IOMMU device, either during initial attachment to a client
++ * device, or during system/runtime resume of the device. This
++ * includes programming all the appropriate IOMMU registers, and
++ * managing the associated omap_hwmod's state and the device's
++ * reset line. The function also restores any locked TLBs if
++ * resuming after a suspend.
++ **/
++static int omap_iommu_runtime_resume(struct device *dev)
++{
++	struct platform_device *pdev = to_platform_device(dev);
++	struct iommu_platform_data *pdata = dev_get_platdata(dev);
++	struct omap_iommu *obj = to_iommu(dev);
++	int ret = 0;
++
++	if (pdata && pdata->set_pwrdm_constraint) {
++		ret = pdata->set_pwrdm_constraint(pdev, true, &obj->pwrst);
++		if (ret) {
++			dev_warn(obj->dev, "pwrdm_constraint failed to be set, status = %d\n",
++				 ret);
++		}
++	}
++
++	if (pdata && pdata->deassert_reset) {
++		ret = pdata->deassert_reset(pdev, pdata->reset_name);
++		if (ret) {
++			dev_err(dev, "deassert_reset failed: %d\n", ret);
++			return ret;
++		}
++	}
++
++	if (pdata && pdata->device_enable)
++		pdata->device_enable(pdev);
++
++	/* restore the TLBs only during resume, and not for power up */
++	if (obj->domain)
++		omap_iommu_restore_tlb_entries(obj);
++
++	ret = omap2_iommu_enable(obj);
++
++	return ret;
++}
++
++/**
++ * omap_iommu_suspend_prepare - prepare() dev_pm_ops implementation
++ * @dev:	iommu device
++ *
++ * This function performs the necessary checks to determine if the IOMMU
++ * device needs suspending or not. The function checks if the runtime_pm
++ * status of the device is suspended, and returns 1 in that case. This
++ * results in the PM core to skip invoking any of the Sleep PM callbacks
++ * (suspend, suspend_late, resume, resume_early etc).
++ */
++static int omap_iommu_prepare(struct device *dev)
++{
++	if (pm_runtime_status_suspended(dev))
++		return 1;
++	return 0;
++}
++
++static bool omap_iommu_can_register(struct platform_device *pdev)
++{
++	struct device_node *np = pdev->dev.of_node;
++
++	if (!of_device_is_compatible(np, "ti,dra7-dsp-iommu"))
++		return true;
++
++	/*
++	 * restrict IOMMU core registration only for processor-port MDMA MMUs
++	 * on DRA7 DSPs
++	 */
++	if ((!strcmp(dev_name(&pdev->dev), "40d01000.mmu")) ||
++	    (!strcmp(dev_name(&pdev->dev), "41501000.mmu")))
++		return true;
++
++	return false;
++}
++
+ static int omap_iommu_dra7_get_dsp_system_cfg(struct platform_device *pdev,
+ 					      struct omap_iommu *obj)
+ {
+@@ -949,6 +1180,15 @@ static int omap_iommu_probe(struct platform_device *pdev)
+ 	if (!obj)
+ 		return -ENOMEM;
+ 
++	/*
++	 * self-manage the ordering dependencies between omap_device_enable/idle
++	 * and omap_device_assert/deassert_hardreset API
++	 */
++	if (pdev->dev.pm_domain) {
++		dev_dbg(&pdev->dev, "device pm_domain is being reset\n");
++		pdev->dev.pm_domain = NULL;
++	}
++
+ 	obj->name = dev_name(&pdev->dev);
+ 	obj->nr_tlb_entries = 32;
+ 	err = of_property_read_u32(of, "ti,#tlb-entries", &obj->nr_tlb_entries);
+@@ -961,6 +1201,11 @@ static int omap_iommu_probe(struct platform_device *pdev)
+ 
+ 	obj->dev = &pdev->dev;
+ 	obj->ctx = (void *)obj + sizeof(*obj);
++	obj->cr_ctx = devm_kzalloc(&pdev->dev,
++				   sizeof(*obj->cr_ctx) * obj->nr_tlb_entries,
++				   GFP_KERNEL);
++	if (!obj->cr_ctx)
++		return -ENOMEM;
+ 
+ 	spin_lock_init(&obj->iommu_lock);
+ 	spin_lock_init(&obj->page_table_lock);
+@@ -984,19 +1229,22 @@ static int omap_iommu_probe(struct platform_device *pdev)
+ 		return err;
+ 	platform_set_drvdata(pdev, obj);
+ 
+-	obj->group = iommu_group_alloc();
+-	if (IS_ERR(obj->group))
+-		return PTR_ERR(obj->group);
++	if (omap_iommu_can_register(pdev)) {
++		obj->group = iommu_group_alloc();
++		if (IS_ERR(obj->group))
++			return PTR_ERR(obj->group);
+ 
+-	err = iommu_device_sysfs_add(&obj->iommu, obj->dev, NULL, obj->name);
+-	if (err)
+-		goto out_group;
++		err = iommu_device_sysfs_add(&obj->iommu, obj->dev, NULL,
++					     obj->name);
++		if (err)
++			goto out_group;
+ 
+-	iommu_device_set_ops(&obj->iommu, &omap_iommu_ops);
++		iommu_device_set_ops(&obj->iommu, &omap_iommu_ops);
+ 
+-	err = iommu_device_register(&obj->iommu);
+-	if (err)
+-		goto out_sysfs;
++		err = iommu_device_register(&obj->iommu);
++		if (err)
++			goto out_sysfs;
++	}
+ 
+ 	pm_runtime_irq_safe(obj->dev);
+ 	pm_runtime_enable(obj->dev);
+@@ -1018,11 +1266,13 @@ static int omap_iommu_remove(struct platform_device *pdev)
+ {
+ 	struct omap_iommu *obj = platform_get_drvdata(pdev);
+ 
+-	iommu_group_put(obj->group);
+-	obj->group = NULL;
++	if (obj->group) {
++		iommu_group_put(obj->group);
++		obj->group = NULL;
+ 
+-	iommu_device_sysfs_remove(&obj->iommu);
+-	iommu_device_unregister(&obj->iommu);
++		iommu_device_sysfs_remove(&obj->iommu);
++		iommu_device_unregister(&obj->iommu);
++	}
+ 
+ 	omap_iommu_debugfs_remove(obj);
+ 
+@@ -1032,6 +1282,14 @@ static int omap_iommu_remove(struct platform_device *pdev)
+ 	return 0;
+ }
+ 
++static const struct dev_pm_ops omap_iommu_pm_ops = {
++	.prepare = omap_iommu_prepare,
++	SET_LATE_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
++				     pm_runtime_force_resume)
++	SET_RUNTIME_PM_OPS(omap_iommu_runtime_suspend,
++			   omap_iommu_runtime_resume, NULL)
++};
++
+ static const struct of_device_id omap_iommu_of_match[] = {
+ 	{ .compatible = "ti,omap2-iommu" },
+ 	{ .compatible = "ti,omap4-iommu" },
+@@ -1045,6 +1303,7 @@ static struct platform_driver omap_iommu_driver = {
+ 	.remove	= omap_iommu_remove,
+ 	.driver	= {
+ 		.name	= "omap-iommu",
++		.pm	= &omap_iommu_pm_ops,
+ 		.of_match_table = of_match_ptr(omap_iommu_of_match),
+ 	},
+ };
+@@ -1068,11 +1327,13 @@ static int omap_iommu_map(struct iommu_domain *domain, unsigned long da,
+ 			  phys_addr_t pa, size_t bytes, int prot)
+ {
+ 	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
+-	struct omap_iommu *oiommu = omap_domain->iommu_dev;
+-	struct device *dev = oiommu->dev;
++	struct device *dev = omap_domain->dev;
++	struct omap_iommu_device *iommu;
++	struct omap_iommu *oiommu;
+ 	struct iotlb_entry e;
+ 	int omap_pgsz;
+-	u32 ret;
++	u32 ret = -EINVAL;
++	int i;
+ 
+ 	omap_pgsz = bytes_to_iopgsz(bytes);
+ 	if (omap_pgsz < 0) {
+@@ -1084,9 +1345,24 @@ static int omap_iommu_map(struct iommu_domain *domain, unsigned long da,
+ 
+ 	iotlb_init_entry(&e, da, pa, omap_pgsz);
+ 
+-	ret = omap_iopgtable_store_entry(oiommu, &e);
+-	if (ret)
+-		dev_err(dev, "omap_iopgtable_store_entry failed: %d\n", ret);
++	iommu = omap_domain->iommus;
++	for (i = 0; i < omap_domain->num_iommus; i++, iommu++) {
++		oiommu = iommu->iommu_dev;
++		ret = omap_iopgtable_store_entry(oiommu, &e);
++		if (ret) {
++			dev_err(dev, "omap_iopgtable_store_entry failed: %d\n",
++				ret);
++			break;
++		}
++	}
++
++	if (ret) {
++		while (i--) {
++			iommu--;
++			oiommu = iommu->iommu_dev;
++			iopgtable_clear_entry(oiommu, da);
++		}
++	}
+ 
+ 	return ret;
+ }
+@@ -1095,12 +1371,90 @@ static size_t omap_iommu_unmap(struct iommu_domain *domain, unsigned long da,
+ 			       size_t size)
+ {
+ 	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
+-	struct omap_iommu *oiommu = omap_domain->iommu_dev;
+-	struct device *dev = oiommu->dev;
++	struct device *dev = omap_domain->dev;
++	struct omap_iommu_device *iommu;
++	struct omap_iommu *oiommu;
++	bool error = false;
++	size_t bytes = 0;
++	int i;
+ 
+ 	dev_dbg(dev, "unmapping da 0x%lx size %u\n", da, size);
+ 
+-	return iopgtable_clear_entry(oiommu, da);
++	iommu = omap_domain->iommus;
++	for (i = 0; i < omap_domain->num_iommus; i++, iommu++) {
++		oiommu = iommu->iommu_dev;
++		bytes = iopgtable_clear_entry(oiommu, da);
++		if (!bytes)
++			error = true;
++	}
++
++	/*
++	 * simplify return - we are only checking if any of the iommus
++	 * reported an error, but not if all of them are unmapping the
++	 * same number of entries. This should not occur due to the
++	 * mirror programming.
++	 */
++	return error ? 0 : bytes;
++}
++
++static int omap_iommu_count(struct device *dev)
++{
++	struct omap_iommu_arch_data *arch_data = dev->archdata.iommu;
++	int count = 0;
++
++	while (arch_data->iommu_dev) {
++		count++;
++		arch_data++;
++	}
++
++	return count;
++}
++
++/* caller should call cleanup if this function fails */
++static int omap_iommu_attach_init(struct device *dev,
++				  struct omap_iommu_domain *odomain)
++{
++	struct omap_iommu_device *iommu;
++	int i;
++
++	odomain->num_iommus = omap_iommu_count(dev);
++	if (!odomain->num_iommus)
++		return -EINVAL;
++
++	odomain->iommus = kcalloc(odomain->num_iommus, sizeof(*iommu),
++				  GFP_ATOMIC);
++	if (!odomain->iommus)
++		return -ENOMEM;
++
++	iommu = odomain->iommus;
++	for (i = 0; i < odomain->num_iommus; i++, iommu++) {
++		iommu->pgtable = kzalloc(IOPGD_TABLE_SIZE, GFP_ATOMIC);
++		if (!iommu->pgtable)
++			return -ENOMEM;
++
++		/*
++		 * should never fail, but please keep this around to ensure
++		 * we keep the hardware happy
++		 */
++		if (WARN_ON(!IS_ALIGNED((long)iommu->pgtable,
++					IOPGD_TABLE_SIZE)))
++			return -EINVAL;
++	}
++
++	return 0;
++}
++
++static void omap_iommu_detach_fini(struct omap_iommu_domain *odomain)
++{
++	int i;
++	struct omap_iommu_device *iommu = odomain->iommus;
++
++	for (i = 0; iommu && i < odomain->num_iommus; i++, iommu++)
++		kfree(iommu->pgtable);
++
++	kfree(odomain->iommus);
++	odomain->num_iommus = 0;
++	odomain->iommus = NULL;
+ }
+ 
+ static int
+@@ -1108,8 +1462,10 @@ omap_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
+ {
+ 	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
+ 	struct omap_iommu_arch_data *arch_data = dev->archdata.iommu;
++	struct omap_iommu_device *iommu;
+ 	struct omap_iommu *oiommu;
+ 	int ret = 0;
++	int i;
+ 
+ 	if (!arch_data || !arch_data->iommu_dev) {
+ 		dev_err(dev, "device doesn't have an associated iommu\n");
+@@ -1118,26 +1474,49 @@ omap_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
+ 
+ 	spin_lock(&omap_domain->lock);
+ 
+-	/* only a single device is supported per domain for now */
+-	if (omap_domain->iommu_dev) {
++	/* only a single client device can be attached to a domain */
++	if (omap_domain->dev) {
+ 		dev_err(dev, "iommu domain is already attached\n");
+ 		ret = -EBUSY;
+ 		goto out;
+ 	}
+ 
+-	oiommu = arch_data->iommu_dev;
+-
+-	/* get a handle to and enable the omap iommu */
+-	ret = omap_iommu_attach(oiommu, omap_domain->pgtable);
++	ret = omap_iommu_attach_init(dev, omap_domain);
+ 	if (ret) {
+-		dev_err(dev, "can't get omap iommu: %d\n", ret);
+-		goto out;
++		dev_err(dev, "failed to allocate required iommu data %d\n",
++			ret);
++		goto init_fail;
++	}
++
++	iommu = omap_domain->iommus;
++	for (i = 0; i < omap_domain->num_iommus; i++, iommu++, arch_data++) {
++		/* configure and enable the omap iommu */
++		oiommu = arch_data->iommu_dev;
++		ret = omap_iommu_attach(oiommu, iommu->pgtable);
++		if (ret) {
++			dev_err(dev, "can't get omap iommu: %d\n", ret);
++			goto attach_fail;
++		}
++
++		oiommu->domain = domain;
++		iommu->iommu_dev = oiommu;
+ 	}
+ 
+-	omap_domain->iommu_dev = oiommu;
+ 	omap_domain->dev = dev;
+-	oiommu->domain = domain;
+ 
++	goto out;
++
++attach_fail:
++	while (i--) {
++		iommu--;
++		arch_data--;
++		oiommu = iommu->iommu_dev;
++		omap_iommu_detach(oiommu);
++		iommu->iommu_dev = NULL;
++		oiommu->domain = NULL;
++	}
++init_fail:
++	omap_iommu_detach_fini(omap_domain);
+ out:
+ 	spin_unlock(&omap_domain->lock);
+ 	return ret;
+@@ -1146,21 +1525,40 @@ omap_iommu_attach_dev(struct iommu_domain *domain, struct device *dev)
+ static void _omap_iommu_detach_dev(struct omap_iommu_domain *omap_domain,
+ 				   struct device *dev)
+ {
+-	struct omap_iommu *oiommu = dev_to_omap_iommu(dev);
++	struct omap_iommu_arch_data *arch_data = dev->archdata.iommu;
++	struct omap_iommu_device *iommu = omap_domain->iommus;
++	struct omap_iommu *oiommu;
++	int i;
++
++	if (!omap_domain->dev) {
++		dev_err(dev, "domain has no attached device\n");
++		return;
++	}
+ 
+ 	/* only a single device is supported per domain for now */
+-	if (omap_domain->iommu_dev != oiommu) {
+-		dev_err(dev, "invalid iommu device\n");
++	if (omap_domain->dev != dev) {
++		dev_err(dev, "invalid attached device\n");
+ 		return;
+ 	}
+ 
+-	iopgtable_clear_entry_all(oiommu);
++	/*
++	 * cleanup in the reverse order of attachment - this addresses
++	 * any h/w dependencies between multiple instances, if any
++	 */
++	iommu += (omap_domain->num_iommus - 1);
++	arch_data += (omap_domain->num_iommus - 1);
++	for (i = 0; i < omap_domain->num_iommus; i++, iommu--, arch_data--) {
++		oiommu = iommu->iommu_dev;
++		iopgtable_clear_entry_all(oiommu);
++
++		omap_iommu_detach(oiommu);
++		iommu->iommu_dev = NULL;
++		oiommu->domain = NULL;
++	}
+ 
+-	omap_iommu_detach(oiommu);
++	omap_iommu_detach_fini(omap_domain);
+ 
+-	omap_domain->iommu_dev = NULL;
+ 	omap_domain->dev = NULL;
+-	oiommu->domain = NULL;
+ }
+ 
+ static void omap_iommu_detach_dev(struct iommu_domain *domain,
+@@ -1182,18 +1580,7 @@ static struct iommu_domain *omap_iommu_domain_alloc(unsigned type)
+ 
+ 	omap_domain = kzalloc(sizeof(*omap_domain), GFP_KERNEL);
+ 	if (!omap_domain)
+-		goto out;
+-
+-	omap_domain->pgtable = kzalloc(IOPGD_TABLE_SIZE, GFP_KERNEL);
+-	if (!omap_domain->pgtable)
+-		goto fail_nomem;
+-
+-	/*
+-	 * should never fail, but please keep this around to ensure
+-	 * we keep the hardware happy
+-	 */
+-	if (WARN_ON(!IS_ALIGNED((long)omap_domain->pgtable, IOPGD_TABLE_SIZE)))
+-		goto fail_align;
++		return NULL;
+ 
+ 	spin_lock_init(&omap_domain->lock);
+ 
+@@ -1202,13 +1589,6 @@ static struct iommu_domain *omap_iommu_domain_alloc(unsigned type)
+ 	omap_domain->domain.geometry.force_aperture = true;
+ 
+ 	return &omap_domain->domain;
+-
+-fail_align:
+-	kfree(omap_domain->pgtable);
+-fail_nomem:
+-	kfree(omap_domain);
+-out:
+-	return NULL;
+ }
+ 
+ static void omap_iommu_domain_free(struct iommu_domain *domain)
+@@ -1219,10 +1599,9 @@ static void omap_iommu_domain_free(struct iommu_domain *domain)
+ 	 * An iommu device is still attached
+ 	 * (currently, only one device can be attached) ?
+ 	 */
+-	if (omap_domain->iommu_dev)
++	if (omap_domain->dev)
+ 		_omap_iommu_detach_dev(omap_domain, omap_domain->dev);
+ 
+-	kfree(omap_domain->pgtable);
+ 	kfree(omap_domain);
+ }
+ 
+@@ -1230,11 +1609,16 @@ static phys_addr_t omap_iommu_iova_to_phys(struct iommu_domain *domain,
+ 					   dma_addr_t da)
+ {
+ 	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
+-	struct omap_iommu *oiommu = omap_domain->iommu_dev;
++	struct omap_iommu_device *iommu = omap_domain->iommus;
++	struct omap_iommu *oiommu = iommu->iommu_dev;
+ 	struct device *dev = oiommu->dev;
+ 	u32 *pgd, *pte;
+ 	phys_addr_t ret = 0;
+ 
++	/*
++	 * all the iommus within the domain will have identical programming,
++	 * so perform the lookup using just the first iommu
++	 */
+ 	iopgtable_lookup_entry(oiommu, da, &pgd, &pte);
+ 
+ 	if (pte) {
+@@ -1260,11 +1644,12 @@ static phys_addr_t omap_iommu_iova_to_phys(struct iommu_domain *domain,
+ 
+ static int omap_iommu_add_device(struct device *dev)
+ {
+-	struct omap_iommu_arch_data *arch_data;
++	struct omap_iommu_arch_data *arch_data, *tmp;
+ 	struct omap_iommu *oiommu;
+ 	struct iommu_group *group;
+ 	struct device_node *np;
+ 	struct platform_device *pdev;
++	int num_iommus, i;
+ 	int ret;
+ 
+ 	/*
+@@ -1276,36 +1661,57 @@ static int omap_iommu_add_device(struct device *dev)
+ 	if (!dev->of_node)
+ 		return 0;
+ 
+-	np = of_parse_phandle(dev->of_node, "iommus", 0);
+-	if (!np)
++	/*
++	 * retrieve the count of IOMMU nodes using phandle size as element size
++	 * since #iommu-cells = 0 for OMAP
++	 */
++	num_iommus = of_property_count_elems_of_size(dev->of_node, "iommus",
++						     sizeof(phandle));
++	if (num_iommus < 0)
+ 		return 0;
+ 
+-	pdev = of_find_device_by_node(np);
+-	if (WARN_ON(!pdev)) {
+-		of_node_put(np);
+-		return -EINVAL;
+-	}
++	arch_data = kzalloc((num_iommus + 1) * sizeof(*arch_data), GFP_KERNEL);
++	if (!arch_data)
++		return -ENOMEM;
+ 
+-	oiommu = platform_get_drvdata(pdev);
+-	if (!oiommu) {
+-		of_node_put(np);
+-		return -EINVAL;
+-	}
++	for (i = 0, tmp = arch_data; i < num_iommus; i++, tmp++) {
++		np = of_parse_phandle(dev->of_node, "iommus", i);
++		if (!np) {
++			kfree(arch_data);
++			return -EINVAL;
++		}
++
++		pdev = of_find_device_by_node(np);
++		if (WARN_ON(!pdev)) {
++			of_node_put(np);
++			kfree(arch_data);
++			return -EINVAL;
++		}
++
++		oiommu = platform_get_drvdata(pdev);
++		if (!oiommu) {
++			of_node_put(np);
++			kfree(arch_data);
++			return -EINVAL;
++		}
++
++		tmp->iommu_dev = oiommu;
+ 
+-	arch_data = kzalloc(sizeof(*arch_data), GFP_KERNEL);
+-	if (!arch_data) {
+ 		of_node_put(np);
+-		return -ENOMEM;
+ 	}
+ 
++	/*
++	 * use the first IOMMU alone for the sysfs device linking.
++	 * TODO: Evaluate if a single iommu_group needs to be
++	 * maintained for both IOMMUs
++	 */
++	oiommu = arch_data->iommu_dev;
+ 	ret = iommu_device_link(&oiommu->iommu, dev);
+ 	if (ret) {
+ 		kfree(arch_data);
+-		of_node_put(np);
+ 		return ret;
+ 	}
+ 
+-	arch_data->iommu_dev = oiommu;
+ 	dev->archdata.iommu = arch_data;
+ 
+ 	/*
+@@ -1321,8 +1727,6 @@ static int omap_iommu_add_device(struct device *dev)
+ 	}
+ 	iommu_group_put(group);
+ 
+-	of_node_put(np);
+-
+ 	return 0;
+ }
+ 
+diff --git a/drivers/iommu/omap-iommu.h b/drivers/iommu/omap-iommu.h
+index a675af29a6ec..ca07fbf287d0 100644
+--- a/drivers/iommu/omap-iommu.h
++++ b/drivers/iommu/omap-iommu.h
+@@ -28,18 +28,27 @@ struct iotlb_entry {
+ 	u32 endian, elsz, mixed;
+ };
+ 
++/**
++ * struct omap_iommu_device - omap iommu device data
++ * @pgtable:	page table used by an omap iommu attached to a domain
++ * @iommu_dev:	pointer to store an omap iommu instance attached to a domain
++ */
++struct omap_iommu_device {
++	u32 *pgtable;
++	struct omap_iommu *iommu_dev;
++};
++
+ /**
+  * struct omap_iommu_domain - omap iommu domain
+- * @pgtable:	the page table
+- * @iommu_dev:	an omap iommu device attached to this domain. only a single
+- *		iommu device can be attached for now.
++ * @num_iommus: number of iommus in this domain
++ * @iommus:	omap iommu device data for all iommus in this domain
+  * @dev:	Device using this domain.
+  * @lock:	domain lock, should be taken when attaching/detaching
+  * @domain:	generic domain handle used by iommu core code
+  */
+ struct omap_iommu_domain {
+-	u32 *pgtable;
+-	struct omap_iommu *iommu_dev;
++	u32 num_iommus;
++	struct omap_iommu_device *iommus;
+ 	struct device *dev;
+ 	spinlock_t lock;
+ 	struct iommu_domain domain;
+@@ -67,11 +76,16 @@ struct omap_iommu {
+ 
+ 	void *ctx; /* iommu context: registres saved area */
+ 
++	struct cr_regs *cr_ctx;
++	u32 num_cr_ctx;
++
+ 	int has_bus_err_back;
+ 	u32 id;
+ 
+ 	struct iommu_device iommu;
+ 	struct iommu_group *group;
++
++	u8 pwrst;
+ };
+ 
+ /**
+@@ -97,17 +111,6 @@ struct iotlb_lock {
+ 	short vict;
+ };
+ 
+-/**
+- * dev_to_omap_iommu() - retrieves an omap iommu object from a user device
+- * @dev: iommu client device
+- */
+-static inline struct omap_iommu *dev_to_omap_iommu(struct device *dev)
+-{
+-	struct omap_iommu_arch_data *arch_data = dev->archdata.iommu;
+-
+-	return arch_data->iommu_dev;
+-}
+-
+ /*
+  * MMU Register offsets
+  */
+diff --git a/drivers/remoteproc/omap_remoteproc.c b/drivers/remoteproc/omap_remoteproc.c
+index a96ce9083f7f..8eb4bb2f9e1d 100644
+--- a/drivers/remoteproc/omap_remoteproc.c
++++ b/drivers/remoteproc/omap_remoteproc.c
+@@ -1,7 +1,8 @@
++// SPDX-License-Identifier: GPL-2.0
+ /*
+  * OMAP Remote Processor driver
+  *
+- * Copyright (C) 2011 Texas Instruments, Inc.
++ * Copyright (C) 2011-2018 Texas Instruments Incorporated - http://www.ti.com/
+  * Copyright (C) 2011 Google, Inc.
+  *
+  * Ohad Ben-Cohen <ohad@wizery.com>
+@@ -10,43 +11,456 @@
+  * Mark Grosen <mgrosen@ti.com>
+  * Suman Anna <s-anna@ti.com>
+  * Hari Kanigeri <h-kanigeri2@ti.com>
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License
+- * version 2 as published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+  */
+ 
+ #include <linux/kernel.h>
+ #include <linux/module.h>
+ #include <linux/err.h>
++#include <linux/io.h>
++#include <linux/of_device.h>
++#include <linux/of_address.h>
++#include <linux/of_reserved_mem.h>
+ #include <linux/platform_device.h>
++#include <linux/pm_runtime.h>
+ #include <linux/dma-mapping.h>
++#include <linux/interrupt.h>
+ #include <linux/remoteproc.h>
+ #include <linux/mailbox_client.h>
+ #include <linux/omap-mailbox.h>
++#include <linux/omap-iommu.h>
++#include <linux/regmap.h>
++#include <linux/mfd/syscon.h>
++#include <clocksource/timer-ti-dm.h>
+ 
+ #include <linux/platform_data/remoteproc-omap.h>
++#include <linux/platform_data/dmtimer-omap.h>
+ 
+ #include "omap_remoteproc.h"
+ #include "remoteproc_internal.h"
+ 
++#define OMAP_RPROC_DSP_LOCAL_MEM_OFFSET		(0x00800000)
++#define OMAP_RPROC_IPU_L2RAM_DEV_ADDR		(0x20000000)
++
++/* default auto-suspend delay (ms) */
++#define DEFAULT_AUTOSUSPEND_DELAY		10000
++
++/**
++ * struct omap_rproc_boot_data - boot data structure for the DSP omap rprocs
++ * @syscon: regmap handle for the system control configuration module
++ * @boot_reg: boot register offset within the @syscon regmap
++ * @boot_reg_shift: bit-field shift required for the boot address value in
++ *		    @boot_reg
++ */
++struct omap_rproc_boot_data {
++	struct regmap *syscon;
++	unsigned int boot_reg;
++	unsigned int boot_reg_shift;
++};
++
++/**
++ * struct omap_rproc_mem - internal memory structure
++ * @cpu_addr: MPU virtual address of the memory region
++ * @bus_addr: bus address used to access the memory region
++ * @dev_addr: device address of the memory region from DSP view
++ * @size: size of the memory region
++ */
++struct omap_rproc_mem {
++	void __iomem *cpu_addr;
++	phys_addr_t bus_addr;
++	u32 dev_addr;
++	size_t size;
++};
++
++/**
++ * struct omap_rproc_timer - data structure for a timer used by a omap rproc
++ * @odt: timer pointer
++ * @timer_ops: OMAP dmtimer ops for @odt timer
++ * @irq: timer irq
++ */
++struct omap_rproc_timer {
++	struct omap_dm_timer *odt;
++	const struct omap_dm_timer_ops *timer_ops;
++	int irq;
++};
++
+ /**
+  * struct omap_rproc - omap remote processor state
+  * @mbox: mailbox channel handle
+  * @client: mailbox client to request the mailbox channel
++ * @boot_data: boot data structure for setting processor boot address
++ * @mem: internal memory regions data
++ * @num_mems: number of internal memory regions
++ * @num_timers: number of rproc timer(s)
++ * @num_wd_timers: number of rproc watchdog timers
++ * @timers: timer(s) info used by rproc
++ * @autosuspend_delay: auto-suspend delay value to be used for runtime pm
++ * @need_resume: if true a resume is needed in the system resume callback
+  * @rproc: rproc handle
++ * @pm_comp: completion primitive to sync for suspend response
++ * @standby_addr: kernel address of the register having module standby status
++ * @suspend_acked: state machine flag to store the suspend request ack
+  */
+ struct omap_rproc {
+ 	struct mbox_chan *mbox;
+ 	struct mbox_client client;
++	struct omap_rproc_boot_data *boot_data;
++	struct omap_rproc_mem *mem;
++	int num_mems;
++	int num_timers;
++	int num_wd_timers;
++	struct omap_rproc_timer *timers;
++	int autosuspend_delay;
++	bool need_resume;
+ 	struct rproc *rproc;
++	struct completion pm_comp;
++	void __iomem *standby_addr;
++	bool suspend_acked;
+ };
+ 
++/**
++ * struct omap_rproc_dev_data - device data for the omap remote processor
++ * @device_name: device name of the remote processor
++ * @fw_name: firmware name to use
++ * @autosuspend_delay: custom auto-suspend delay value in milliseconds
++ */
++struct omap_rproc_dev_data {
++	const char *device_name;
++	const char *fw_name;
++	int autosuspend_delay;
++};
++
++static int rproc_get_id(struct rproc *rproc)
++{
++        struct device *dev = rproc->dev.parent;
++        struct device_node *np = dev->of_node;
++        struct platform_device *pdev = to_platform_device(dev);
++        
++        if (np)
++                return of_alias_get_id(np, "rproc");
++        else
++                return pdev->id;
++}
++
++
++/**
++ * omap_rproc_request_timer - request a timer for a remoteproc
++ * @np: device node pointer to the desired timer
++ * @timer: handle to a struct omap_rproc_timer to return the timer handle
++ *
++ * This helper function is used primarily to request a timer associated with
++ * a remoteproc. The returned handle is stored in the .odt field of the
++ * @timer structure passed in, and is used to invoke other timer specific
++ * ops (like starting a timer either during device initialization or during
++ * a resume operation, or for stopping/freeing a timer).
++ *
++ * Returns 0 on success, otherwise an appropriate failure
++ */
++static int omap_rproc_request_timer(struct device_node *np,
++				    struct omap_rproc_timer *timer)
++{
++	int ret = 0;
++
++	timer->odt = timer->timer_ops->request_by_node(np);
++	if (!timer->odt) {
++		pr_err("request for timer node %p failed\n", np);
++		return -EBUSY;
++	}
++
++	ret = timer->timer_ops->set_source(timer->odt, OMAP_TIMER_SRC_SYS_CLK);
++	if (ret) {
++		pr_err("error setting OMAP_TIMER_SRC_SYS_CLK as source for timer node %p\n",
++		       np);
++		timer->timer_ops->free(timer->odt);
++		return ret;
++	}
++
++	/* clean counter, remoteproc code will set the value */
++	timer->timer_ops->set_load(timer->odt, 0, 0);
++
++	return ret;
++}
++
++/**
++ * omap_rproc_start_timer - start a timer for a remoteproc
++ * @timer: handle to a OMAP rproc timer
++ *
++ * This helper function is used to start a timer associated with a remoteproc,
++ * obtained using the request_timer ops. The helper function needs to be
++ * invoked by the driver to start the timer (during device initialization)
++ * or to just resume the timer.
++ *
++ * Returns 0 on success, otherwise a failure as returned by DMTimer ops
++ */
++static inline int omap_rproc_start_timer(struct omap_rproc_timer *timer)
++{
++	return timer->timer_ops->start(timer->odt);
++}
++
++/**
++ * omap_rproc_stop_timer - stop a timer for a remoteproc
++ * @timer: handle to a OMAP rproc timer
++ *
++ * This helper function is used to disable a timer associated with a
++ * remoteproc, and needs to be called either during a device shutdown
++ * or suspend operation. The separate helper function allows the driver
++ * to just stop a timer without having to release the timer during a
++ * suspend operation.
++ *
++ * Returns 0 on success, otherwise a failure as returned by DMTimer ops
++ */
++static inline int omap_rproc_stop_timer(struct omap_rproc_timer *timer)
++{
++	return timer->timer_ops->stop(timer->odt);
++}
++
++/**
++ * omap_rproc_release_timer - release a timer for a remoteproc
++ * @timer: handle to a OMAP rproc timer
++ *
++ * This helper function is used primarily to release a timer associated
++ * with a remoteproc. The dmtimer will be available for other clients to
++ * use once released.
++ *
++ * Returns 0 on success, otherwise a failure as returned by DMTimer ops
++ */
++static inline int omap_rproc_release_timer(struct omap_rproc_timer *timer)
++{
++	return timer->timer_ops->free(timer->odt);
++}
++
++/**
++ * omap_rproc_get_timer_irq - get the irq for a timer
++ * @timer - handle to a OMAP rproc timer
++ *
++ * This function is used to get the irq associated with a watchdog timer. The
++ * function is called by the OMAP remoteproc driver to register a interrupt
++ * handler to handle watchdog events on the remote processor.
++ *
++ * Returns the irq id on success, otherwise a failure as returned by DMTimer ops
++ */
++static inline int omap_rproc_get_timer_irq(struct omap_rproc_timer *timer)
++{
++	return timer->timer_ops->get_irq(timer->odt);
++}
++
++/**
++ * omap_rproc_ack_timer_irq - acknowledge a timer irq
++ * @timer: handle to a OMAP rproc timer
++ *
++ * This function is used to clear the irq associated with a watchdog timer. The
++ * The function is called by the OMAP remoteproc upon a watchdog event on the
++ * remote processor to clear the interrupt status of the watchdog timer.
++ *
++ * Returns the irq id on success, otherwise a failure as returned by DMTimer ops
++ */
++static inline void omap_rproc_ack_timer_irq(struct omap_rproc_timer *timer)
++{
++	timer->timer_ops->write_status(timer->odt, OMAP_TIMER_INT_OVERFLOW);
++}
++
++/**
++ * omap_rproc_watchdog_isr - Watchdog ISR handler for remoteproc device
++ * @irq: IRQ number associated with a watchdog timer
++ * @data: IRQ handler data
++ *
++ * This ISR routine executes the required necessary low-level code to
++ * acknowledge a watchdog timer interrupt. There can be multiple watchdog
++ * timers associated with a rproc (like IPUs which have 2 watchdog timers,
++ * one per Cortex M3/M4 core), so a lookup has to be performed to identify
++ * the timer to acknowledge its interrupt.
++ *
++ * The function also invokes rproc_report_crash to report the watchdog event
++ * to the remoteproc driver core, to trigger a recovery.
++ *
++ * Return: IRQ_HANDLED or IRQ_NONE
++ */
++static irqreturn_t omap_rproc_watchdog_isr(int irq, void *data)
++{
++	struct rproc *rproc = data;
++	struct omap_rproc *oproc = rproc->priv;
++	struct device *dev = rproc->dev.parent;
++	struct omap_rproc_timer *timers = oproc->timers;
++	struct omap_rproc_timer *wd_timer = NULL;
++	int num_timers = oproc->num_timers + oproc->num_wd_timers;
++	int i;
++
++	for (i = oproc->num_timers; i < num_timers; i++) {
++		if (timers[i].irq > 0 && irq == timers[i].irq) {
++			wd_timer = &timers[i];
++			break;
++		}
++	}
++
++	if (!wd_timer) {
++		dev_err(dev, "invalid timer\n");
++		return IRQ_NONE;
++	}
++
++	omap_rproc_ack_timer_irq(wd_timer);
++
++	rproc_report_crash(rproc, RPROC_WATCHDOG);
++
++	return IRQ_HANDLED;
++}
++
++/**
++ * omap_rproc_enable_timers - enable the timers for a remoteproc
++ * @rproc: handle of a remote processor
++ * @configure: boolean flag used to acquire and configure the timer handle
++ *
++ * This function is used primarily to enable the timers associated with
++ * a remoteproc. The configure flag is provided to allow the driver to
++ * to either acquire and start a timer (during device initialization) or
++ * to just start a timer (during a resume operation).
++ */
++static int omap_rproc_enable_timers(struct rproc *rproc, bool configure)
++{
++	int i;
++	int ret = 0;
++	struct platform_device *tpdev;
++	struct dmtimer_platform_data *tpdata;
++	const struct omap_dm_timer_ops *timer_ops;
++	struct omap_rproc *oproc = rproc->priv;
++	struct omap_rproc_timer *timers = oproc->timers;
++	struct device *dev = rproc->dev.parent;
++	struct device_node *np = NULL;
++	int num_timers = oproc->num_timers + oproc->num_wd_timers;
++
++	if (num_timers <= 0)
++		return 0;
++
++	if (!configure)
++		goto start_timers;
++
++	for (i = 0; i < num_timers; i++) {
++		if (i < oproc->num_timers)
++			np = of_parse_phandle(dev->of_node, "timers", i);
++		else
++			np = of_parse_phandle(dev->of_node, "watchdog-timers",
++					      (i - oproc->num_timers));
++		if (!np) {
++			ret = -ENXIO;
++			dev_err(dev, "device node lookup for timer at index %d failed: %d\n",
++				i < oproc->num_timers ? i :
++				i - oproc->num_timers, ret);
++			goto free_timers;
++		}
++
++		tpdev = of_find_device_by_node(np);
++		if (!tpdev) {
++			ret = -ENODEV;
++			dev_err(dev, "could not get timer platform device\n");
++			goto put_node;
++		}
++
++		tpdata = dev_get_platdata(&tpdev->dev);
++		put_device(&tpdev->dev);
++		if (!tpdata) {
++			ret = -EINVAL;
++			dev_err(dev, "dmtimer pdata structure NULL\n");
++			goto put_node;
++		}
++
++		timer_ops = tpdata->timer_ops;
++		if (!timer_ops || !timer_ops->request_by_node ||
++		    !timer_ops->set_source || !timer_ops->set_load ||
++		    !timer_ops->free || !timer_ops->start ||
++		    !timer_ops->stop || !timer_ops->get_irq ||
++		    !timer_ops->write_status) {
++			ret = -EINVAL;
++			dev_err(dev, "device does not have required timer ops\n");
++			goto put_node;
++		}
++
++		timers[i].irq = -1;
++		timers[i].timer_ops = timer_ops;
++		ret = omap_rproc_request_timer(np, &timers[i]);
++		if (ret) {
++			dev_err(dev, "request for timer %p failed: %d\n", np,
++				ret);
++			goto put_node;
++		}
++		of_node_put(np);
++
++		if (i >= oproc->num_timers) {
++			timers[i].irq = omap_rproc_get_timer_irq(&timers[i]);
++			if (timers[i].irq < 0) {
++				dev_err(dev, "get_irq for timer %p failed: %d\n",
++					np, timers[i].irq);
++				ret = -EBUSY;
++				goto free_timers;
++			}
++
++			ret = request_irq(timers[i].irq,
++					  omap_rproc_watchdog_isr, IRQF_SHARED,
++					  "rproc-wdt", rproc);
++			if (ret) {
++				dev_err(dev, "error requesting irq for timer %p\n",
++					np);
++				omap_rproc_release_timer(&timers[i]);
++				timers[i].odt = NULL;
++				timers[i].timer_ops = NULL;
++				timers[i].irq = -1;
++				goto free_timers;
++			}
++		}
++	}
++
++start_timers:
++	for (i = 0; i < num_timers; i++)
++		omap_rproc_start_timer(&timers[i]);
++	return 0;
++
++put_node:
++	of_node_put(np);
++free_timers:
++	while (i--) {
++		if (i >= oproc->num_timers)
++			free_irq(timers[i].irq, rproc);
++		omap_rproc_release_timer(&timers[i]);
++		timers[i].odt = NULL;
++		timers[i].timer_ops = NULL;
++		timers[i].irq = -1;
++	}
++
++	return ret;
++}
++
++/**
++ * omap_rproc_disable_timers - disable the timers for a remoteproc
++ * @rproc: handle of a remote processor
++ * @configure: boolean flag used to release the timer handle
++ *
++ * This function is used primarily to disable the timers associated with
++ * a remoteproc. The configure flag is provided to allow the driver to
++ * to either stop and release a timer (during device shutdown) or to just
++ * stop a timer (during a suspend operation).
++ */
++static int omap_rproc_disable_timers(struct rproc *rproc, bool configure)
++{
++	int i;
++	struct omap_rproc *oproc = rproc->priv;
++	struct omap_rproc_timer *timers = oproc->timers;
++	int num_timers = oproc->num_timers + oproc->num_wd_timers;
++
++	if (num_timers <= 0)
++		return 0;
++
++	for (i = 0; i < num_timers; i++) {
++		omap_rproc_stop_timer(&timers[i]);
++		if (configure) {
++			if (i >= oproc->num_timers)
++				free_irq(timers[i].irq, rproc);
++			omap_rproc_release_timer(&timers[i]);
++			timers[i].odt = NULL;
++			timers[i].timer_ops = NULL;
++			timers[i].irq = -1;
++		}
++	}
++
++	return 0;
++}
++
+ /**
+  * omap_rproc_mbox_callback() - inbound mailbox message handler
+  * @client: mailbox client pointer used for requesting the mailbox channel
+@@ -73,13 +487,28 @@ static void omap_rproc_mbox_callback(struct mbox_client *client, void *data)
+ 
+ 	switch (msg) {
+ 	case RP_MBOX_CRASH:
+-		/* just log this for now. later, we'll also do recovery */
++		/*
++		 * remoteproc detected an exception, notify the rproc core.
++		 * The remoteproc core will handle the recovery.
++		 */
+ 		dev_err(dev, "omap rproc %s crashed\n", name);
++		rproc_report_crash(oproc->rproc, RPROC_FATAL_ERROR);
+ 		break;
+ 	case RP_MBOX_ECHO_REPLY:
+ 		dev_info(dev, "received echo reply from %s\n", name);
+ 		break;
++	case RP_MBOX_SUSPEND_ACK:
++	case RP_MBOX_SUSPEND_CANCEL:
++		oproc->suspend_acked = msg == RP_MBOX_SUSPEND_ACK;
++		complete(&oproc->pm_comp);
++		break;
+ 	default:
++		if (msg >= RP_MBOX_READY && msg < RP_MBOX_END_MSG)
++			return;
++		if (msg > oproc->rproc->max_notifyid) {
++			dev_dbg(dev, "dropping unknown message 0x%x", msg);
++			return;
++		}
+ 		/* msg contains the index of the triggered vring */
+ 		if (rproc_vq_interrupt(oproc->rproc, msg) == IRQ_NONE)
+ 			dev_dbg(dev, "no message was found in vqid %d\n", msg);
+@@ -93,11 +522,52 @@ static void omap_rproc_kick(struct rproc *rproc, int vqid)
+ 	struct device *dev = rproc->dev.parent;
+ 	int ret;
+ 
++	/* wake up the rproc before kicking it */
++	ret = pm_runtime_get_sync(dev);
++	if (WARN_ON(ret < 0)) {
++		dev_err(dev, "pm_runtime_get_sync() failed during kick, ret = %d\n",
++			ret);
++		pm_runtime_put_noidle(dev);
++		return;
++	}
++
+ 	/* send the index of the triggered virtqueue in the mailbox payload */
+ 	ret = mbox_send_message(oproc->mbox, (void *)vqid);
+ 	if (ret < 0)
+ 		dev_err(dev, "failed to send mailbox message, status = %d\n",
+ 			ret);
++
++	pm_runtime_mark_last_busy(dev);
++	pm_runtime_put_autosuspend(dev);
++}
++
++/**
++ * omap_rproc_write_dsp_boot_addr - set boot address for a DSP remote processor
++ * @rproc: handle of a remote processor
++ *
++ * Set boot address for a supported DSP remote processor.
++ */
++static int omap_rproc_write_dsp_boot_addr(struct rproc *rproc)
++{
++	struct device *dev = rproc->dev.parent;
++	struct omap_rproc *oproc = rproc->priv;
++	struct omap_rproc_boot_data *bdata = oproc->boot_data;
++	u32 offset = bdata->boot_reg;
++	unsigned int value = rproc->bootaddr;
++	unsigned int mask = ~(SZ_1K - 1);
++
++	if (value & (SZ_1K - 1)) {
++		dev_err(dev, "invalid boot address 0x%x, must be aligned on a 1KB boundary\n",
++			value);
++		return -EINVAL;
++	}
++
++	value >>= bdata->boot_reg_shift;
++	mask >>= bdata->boot_reg_shift;
++
++	regmap_update_bits(bdata->syscon, offset, mask, value);
++
++	return 0;
+ }
+ 
+ /*
+@@ -116,8 +586,11 @@ static int omap_rproc_start(struct rproc *rproc)
+ 	int ret;
+ 	struct mbox_client *client = &oproc->client;
+ 
+-	if (pdata->set_bootaddr)
+-		pdata->set_bootaddr(rproc->bootaddr);
++	if (oproc->boot_data) {
++		ret = omap_rproc_write_dsp_boot_addr(rproc);
++		if (ret)
++			return ret;
++	}
+ 
+ 	client->dev = dev;
+ 	client->tx_done = NULL;
+@@ -125,7 +598,7 @@ static int omap_rproc_start(struct rproc *rproc)
+ 	client->tx_block = false;
+ 	client->knows_txdone = false;
+ 
+-	oproc->mbox = omap_mbox_request_channel(client, pdata->mbox_name);
++	oproc->mbox = mbox_request_channel(client, 0);
+ 	if (IS_ERR(oproc->mbox)) {
+ 		ret = -EBUSY;
+ 		dev_err(dev, "mbox_request_channel failed: %ld\n",
+@@ -146,14 +619,35 @@ static int omap_rproc_start(struct rproc *rproc)
+ 		goto put_mbox;
+ 	}
+ 
++	ret = omap_rproc_enable_timers(rproc, true);
++	if (ret) {
++		dev_err(dev, "omap_rproc_enable_timers failed: %d\n", ret);
++		goto put_mbox;
++	}
++
+ 	ret = pdata->device_enable(pdev);
+ 	if (ret) {
+ 		dev_err(dev, "omap_device_enable failed: %d\n", ret);
+-		goto put_mbox;
++		goto reset_timers;
+ 	}
+ 
++	/*
++	 * remote processor is up, so update the runtime pm status and
++	 * enable the auto-suspend. The device usage count is incremented
++	 * manually for balancing it for auto-suspend
++	 */
++	pm_runtime_set_active(dev);
++	pm_runtime_set_autosuspend_delay(dev, oproc->autosuspend_delay);
++	pm_runtime_use_autosuspend(dev);
++	pm_runtime_get_noresume(dev);
++	pm_runtime_enable(dev);
++	pm_runtime_mark_last_busy(dev);
++	pm_runtime_put_autosuspend(dev);
++
+ 	return 0;
+ 
++reset_timers:
++	omap_rproc_disable_timers(rproc, true);
+ put_mbox:
+ 	mbox_free_channel(oproc->mbox);
+ 	return ret;
+@@ -168,36 +662,673 @@ static int omap_rproc_stop(struct rproc *rproc)
+ 	struct omap_rproc *oproc = rproc->priv;
+ 	int ret;
+ 
++	/*
++	 * cancel any possible scheduled runtime suspend by incrementing
++	 * the device usage count, and resuming the device. The remoteproc
++	 * also needs to be woken up if suspended, to avoid the remoteproc
++	 * OS to continue to remember any context that it has saved, and
++	 * avoid potential issues in misindentifying a subsequent device
++	 * reboot as a power restore boot
++	 */
++	ret = pm_runtime_get_sync(dev);
++	if (ret < 0) {
++		pm_runtime_put_noidle(dev);
++		return ret;
++	}
++
+ 	ret = pdata->device_shutdown(pdev);
+ 	if (ret)
+-		return ret;
++		goto out;
++
++	ret = omap_rproc_disable_timers(rproc, true);
++	if (ret)
++		goto enable_device;
+ 
+ 	mbox_free_channel(oproc->mbox);
+ 
++	/*
++	 * update the runtime pm states and status now that the remoteproc
++	 * has stopped
++	 */
++	pm_runtime_disable(dev);
++	pm_runtime_dont_use_autosuspend(dev);
++	pm_runtime_put_noidle(dev);
++	pm_runtime_set_suspended(dev);
++
+ 	return 0;
++
++enable_device:
++	pdata->device_enable(pdev);
++out:
++	/* schedule the next auto-suspend */
++	pm_runtime_mark_last_busy(dev);
++	pm_runtime_put_autosuspend(dev);
++	return ret;
++
++}
++
++/*
++ * Internal Memory translation helper
++ *
++ * Custom function implementing the rproc .da_to_va ops to provide address
++ * translation (device address to kernel virtual address) for internal RAMs
++ * present in a DSP or IPU device). The translated addresses can be used
++ * either by the remoteproc core for loading, or by any rpmsg bus drivers.
++ */
++static void *omap_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
++{
++	struct omap_rproc *oproc = rproc->priv;
++	void *va = NULL;
++	int i;
++	u32 offset;
++
++	if (len <= 0)
++		return NULL;
++
++	if (!oproc->num_mems)
++		return NULL;
++
++	for (i = 0; i < oproc->num_mems; i++) {
++		if (da >= oproc->mem[i].dev_addr && da + len <=
++		    oproc->mem[i].dev_addr +  oproc->mem[i].size) {
++			offset = da -  oproc->mem[i].dev_addr;
++			/* __force to make sparse happy with type conversion */
++			va = (__force void *)(oproc->mem[i].cpu_addr + offset);
++			break;
++		}
++	}
++
++	return va;
+ }
+ 
+ static const struct rproc_ops omap_rproc_ops = {
+ 	.start		= omap_rproc_start,
+ 	.stop		= omap_rproc_stop,
+ 	.kick		= omap_rproc_kick,
++	.da_to_va	= omap_rproc_da_to_va,
++};
++
++#ifdef CONFIG_PM
++static bool _is_rproc_in_standby(struct omap_rproc *oproc)
++{
++	static int standby_mask = (1 << 18);
++
++	return readl(oproc->standby_addr) & standby_mask;
++}
++
++/* 1 sec is long enough time to let the remoteproc side suspend the device */
++#define DEF_SUSPEND_TIMEOUT 1000
++static int _omap_rproc_suspend(struct rproc *rproc, bool auto_suspend)
++{
++	struct device *dev = rproc->dev.parent;
++	struct platform_device *pdev = to_platform_device(dev);
++	struct omap_rproc_pdata *pdata = dev_get_platdata(dev);
++	struct omap_rproc *oproc = rproc->priv;
++	unsigned long to = msecs_to_jiffies(DEF_SUSPEND_TIMEOUT);
++	unsigned long ta = jiffies + to;
++	u32 suspend_msg = auto_suspend ?
++				RP_MBOX_SUSPEND_AUTO : RP_MBOX_SUSPEND_SYSTEM;
++	int ret;
++
++	reinit_completion(&oproc->pm_comp);
++	oproc->suspend_acked = false;
++	ret = mbox_send_message(oproc->mbox, (void *)suspend_msg);
++	if (ret < 0) {
++		dev_err(dev, "PM mbox_send_message failed: %d\n", ret);
++		return ret;
++	}
++
++	ret = wait_for_completion_timeout(&oproc->pm_comp, to);
++	if (!oproc->suspend_acked)
++		return -EBUSY;
++
++	/*
++	 * The remoteproc side is returning the ACK message before saving the
++	 * context, because the context saving is performed within a SYS/BIOS
++	 * function, and it cannot have any inter-dependencies against the IPC
++	 * layer. Also, as the SYS/BIOS needs to preserve properly the processor
++	 * register set, sending this ACK or signalling the completion of the
++	 * context save through a shared memory variable can never be the
++	 * absolute last thing to be executed on the remoteproc side, and the
++	 * MPU cannot use the ACK message as a sync point to put the remoteproc
++	 * into reset. The only way to ensure that the remote processor has
++	 * completed saving the context is to check that the module has reached
++	 * STANDBY state (after saving the context, the SYS/BIOS executes the
++	 * appropriate target-specific WFI instruction causing the module to
++	 * enter STANDBY).
++	 */
++	while (!_is_rproc_in_standby(oproc)) {
++		if (time_after(jiffies, ta))
++			return -ETIME;
++		schedule();
++	}
++
++	ret = pdata->device_shutdown(pdev);
++	if (ret)
++		return ret;
++
++	ret = omap_rproc_disable_timers(rproc, false);
++	if (ret) {
++		dev_err(dev, "disabling timers during suspend failed %d\n",
++			ret);
++		goto enable_device;
++	}
++
++	/*
++	 * IOMMUs would have to be disabled specifically for runtime suspend.
++	 * They are handled automatically through System PM callbacks for
++	 * regular system suspend
++	 */
++	if (auto_suspend) {
++		ret = omap_iommu_domain_deactivate(rproc->domain);
++		if (ret) {
++			dev_err(dev, "iommu domain deactivate failed %d\n",
++				ret);
++			goto enable_timers;
++		}
++	}
++
++	return 0;
++
++enable_timers:
++	/* ignore errors on re-enabling code */
++	omap_rproc_enable_timers(rproc, false);
++enable_device:
++	pdata->device_enable(pdev);
++	return ret;
++}
++
++static int _omap_rproc_resume(struct rproc *rproc, bool auto_suspend)
++{
++	struct device *dev = rproc->dev.parent;
++	struct platform_device *pdev = to_platform_device(dev);
++	struct omap_rproc_pdata *pdata = dev_get_platdata(dev);
++	struct omap_rproc *oproc = rproc->priv;
++	int ret;
++
++	/*
++	 * IOMMUs would have to be enabled specifically for runtime resume.
++	 * They would have been already enabled automatically through System
++	 * PM callbacks for regular system resume
++	 */
++	if (auto_suspend) {
++		ret = omap_iommu_domain_activate(rproc->domain);
++		if (ret) {
++			dev_err(dev, "omap_iommu activate failed %d\n", ret);
++			goto out;
++		}
++	}
++
++	/* boot address could be lost after suspend, so restore it */
++	if (oproc->boot_data) {
++		ret = omap_rproc_write_dsp_boot_addr(rproc);
++		if (ret) {
++			dev_err(dev, "boot address restore failed %d\n", ret);
++			goto suspend_iommu;
++		}
++	}
++
++	ret = omap_rproc_enable_timers(rproc, false);
++	if (ret) {
++		dev_err(dev, "enabling timers during resume failed %d\n",
++			ret);
++		goto suspend_iommu;
++	}
++
++	ret = pdata->device_enable(pdev);
++	if (ret)
++		goto disable_timers;
++
++	return 0;
++
++disable_timers:
++	omap_rproc_disable_timers(rproc, false);
++suspend_iommu:
++	if (auto_suspend)
++		omap_iommu_domain_deactivate(rproc->domain);
++out:
++	return ret;
++}
++
++static int __maybe_unused omap_rproc_suspend(struct device *dev)
++{
++	struct platform_device *pdev = to_platform_device(dev);
++	struct rproc *rproc = platform_get_drvdata(pdev);
++	struct omap_rproc *oproc = rproc->priv;
++	int ret = 0;
++
++	mutex_lock(&rproc->lock);
++	if (rproc->state == RPROC_OFFLINE)
++		goto out;
++
++	if (rproc->state == RPROC_SUSPENDED)
++		goto out;
++
++	if (rproc->state != RPROC_RUNNING) {
++		ret = -EBUSY;
++		goto out;
++	}
++
++	ret = _omap_rproc_suspend(rproc, false);
++	if (ret) {
++		dev_err(dev, "suspend failed %d\n", ret);
++		goto out;
++	}
++
++	/*
++	 * remoteproc is running at the time of system suspend, so remember
++	 * it so as to wake it up during system resume
++	 */
++	oproc->need_resume = 1;
++	rproc->state = RPROC_SUSPENDED;
++
++	/*
++	 * update the runtime pm status to be suspended, without decrementing
++	 * the device usage count
++	 */
++	pm_runtime_disable(dev);
++	pm_runtime_set_suspended(dev);
++out:
++	mutex_unlock(&rproc->lock);
++	return ret;
++}
++
++static int __maybe_unused omap_rproc_resume(struct device *dev)
++{
++	struct platform_device *pdev = to_platform_device(dev);
++	struct rproc *rproc = platform_get_drvdata(pdev);
++	struct omap_rproc *oproc = rproc->priv;
++	int ret = 0;
++
++	mutex_lock(&rproc->lock);
++	if (rproc->state == RPROC_OFFLINE)
++		goto out;
++
++	if (rproc->state != RPROC_SUSPENDED) {
++		ret = -EBUSY;
++		goto out;
++	}
++
++	/*
++	 * remoteproc was auto-suspended at the time of system suspend,
++	 * so no need to wake-up the processor (leave it in suspended
++	 * state, will be woken up during a subsequent runtime_resume)
++	 */
++	if (!oproc->need_resume)
++		goto out;
++
++	ret = _omap_rproc_resume(rproc, false);
++	if (ret) {
++		dev_err(dev, "resume failed %d\n", ret);
++		goto out;
++	}
++	oproc->need_resume = false;
++
++	rproc->state = RPROC_RUNNING;
++
++	/*
++	 * update the runtime pm status to be active, without incrementing
++	 * the device usage count
++	 */
++	pm_runtime_set_active(dev);
++	pm_runtime_enable(dev);
++	pm_runtime_mark_last_busy(dev);
++out:
++	mutex_unlock(&rproc->lock);
++	return ret;
++}
++
++static int omap_rproc_runtime_suspend(struct device *dev)
++{
++	struct rproc *rproc = dev_get_drvdata(dev);
++	struct omap_rproc *oproc = rproc->priv;
++	int ret;
++
++	if (rproc->state == RPROC_CRASHED) {
++		dev_dbg(dev, "rproc cannot be runtime suspended when crashed!\n");
++		return -EBUSY;
++	}
++
++	if (WARN_ON(rproc->state != RPROC_RUNNING)) {
++		dev_err(dev, "rproc cannot be runtime suspended when not running!\n");
++		return -EBUSY;
++	}
++
++	/*
++	 * do not even attempt suspend if the remote processor is not
++	 * idled for runtime auto-suspend
++	 */
++	if (!_is_rproc_in_standby(oproc)) {
++		ret = -EBUSY;
++		goto abort;
++	}
++
++	ret = _omap_rproc_suspend(rproc, true);
++	if (ret)
++		goto abort;
++
++	rproc->state = RPROC_SUSPENDED;
++	return 0;
++
++abort:
++	pm_runtime_mark_last_busy(dev);
++	return ret;
++}
++
++static int omap_rproc_runtime_resume(struct device *dev)
++{
++	struct rproc *rproc = dev_get_drvdata(dev);
++	int ret;
++
++	if (WARN_ON(rproc->state != RPROC_SUSPENDED)) {
++		dev_err(dev, "rproc cannot be runtime resumed if not suspended!\n");
++		return -EBUSY;
++	}
++
++	ret = _omap_rproc_resume(rproc, true);
++	if (ret) {
++		dev_err(dev, "runtime resume failed %d\n", ret);
++		return ret;
++	}
++
++	rproc->state = RPROC_RUNNING;
++	return 0;
++}
++#endif /* CONFIG_PM */
++
++static const struct omap_rproc_dev_data omap4_dsp_dev_data = {
++	.device_name	= "dsp",
++	.fw_name	= "omap4-dsp-fw.xe64T",
++};
++
++static const struct omap_rproc_dev_data omap4_ipu_dev_data = {
++	.device_name	= "ipu",
++	.fw_name	= "omap4-ipu-fw.xem3",
++};
++
++static const struct omap_rproc_dev_data omap5_dsp_dev_data = {
++	.device_name	= "dsp",
++	.fw_name	= "omap5-dsp-fw.xe64T",
++};
++
++static const struct omap_rproc_dev_data omap5_ipu_dev_data = {
++	.device_name	= "ipu",
++	.fw_name	= "omap5-ipu-fw.xem4",
++};
++
++static const struct omap_rproc_dev_data dra7_rproc_dev_data[] = {
++	{
++		.device_name	= "40800000.dsp",
++		.fw_name	= "dra7-dsp1-fw.xe66",
++	},
++	{
++		.device_name	= "41000000.dsp",
++		.fw_name	= "dra7-dsp2-fw.xe66",
++	},
++	{
++		.device_name	= "55020000.ipu",
++		.fw_name	= "dra7-ipu2-fw.xem4",
++	},
++	{
++		.device_name	= "58820000.ipu",
++		.fw_name	= "dra7-ipu1-fw.xem4",
++	},
++	{
++		/* sentinel */
++	},
++};
++
++static const struct of_device_id omap_rproc_of_match[] = {
++	{
++		.compatible     = "ti,omap4-dsp",
++		.data           = &omap4_dsp_dev_data,
++	},
++	{
++		.compatible     = "ti,omap4-ipu",
++		.data           = &omap4_ipu_dev_data,
++	},
++	{
++		.compatible     = "ti,omap5-dsp",
++		.data           = &omap5_dsp_dev_data,
++	},
++	{
++		.compatible     = "ti,omap5-ipu",
++		.data           = &omap5_ipu_dev_data,
++	},
++	{
++		.compatible     = "ti,dra7-dsp",
++		.data           = dra7_rproc_dev_data,
++	},
++	{
++		.compatible     = "ti,dra7-ipu",
++		.data           = dra7_rproc_dev_data,
++	},
++	{
++		/* end */
++	},
+ };
++MODULE_DEVICE_TABLE(of, omap_rproc_of_match);
++
++static int omap_rproc_get_autosuspend_delay(struct platform_device *pdev)
++{
++	struct device_node *np = pdev->dev.of_node;
++	const struct omap_rproc_dev_data *data;
++	int delay = -EINVAL;
++
++	data = of_device_get_match_data(&pdev->dev);
++	if (!data)
++		return -ENODEV;
++
++	if (!of_device_is_compatible(np, "ti,dra7-dsp") &&
++	    !of_device_is_compatible(np, "ti,dra7-ipu")) {
++		delay = data->autosuspend_delay;
++		goto out;
++	}
++
++	for (; data && data->device_name; data++) {
++		if (!strcmp(dev_name(&pdev->dev), data->device_name)) {
++			delay = data->autosuspend_delay;
++			break;
++		}
++	}
++
++out:
++	return (delay > 0) ? delay : DEFAULT_AUTOSUSPEND_DELAY;
++}
++
++static const char *omap_rproc_get_firmware(struct platform_device *pdev)
++{
++	struct device_node *np = pdev->dev.of_node;
++	const struct omap_rproc_dev_data *data;
++
++	data = of_device_get_match_data(&pdev->dev);
++	if (!data)
++		return ERR_PTR(-ENODEV);
++
++	if (!of_device_is_compatible(np, "ti,dra7-dsp") &&
++	    !of_device_is_compatible(np, "ti,dra7-ipu"))
++		return data->fw_name;
++
++	for (; data && data->device_name; data++) {
++		if (!strcmp(dev_name(&pdev->dev), data->device_name))
++			return data->fw_name;
++	}
++
++	return ERR_PTR(-ENOENT);
++}
++
++static int omap_rproc_get_boot_data(struct platform_device *pdev,
++				    struct rproc *rproc)
++{
++	struct device_node *np = pdev->dev.of_node;
++	struct omap_rproc *oproc = rproc->priv;
++	int ret;
++
++	if (!of_device_is_compatible(np, "ti,omap4-dsp") &&
++	    !of_device_is_compatible(np, "ti,omap5-dsp") &&
++	    !of_device_is_compatible(np, "ti,dra7-dsp"))
++		return 0;
++
++	oproc->boot_data = devm_kzalloc(&pdev->dev, sizeof(*oproc->boot_data),
++					GFP_KERNEL);
++	if (!oproc->boot_data)
++		return -ENOMEM;
++
++	if (!of_property_read_bool(np, "syscon-bootreg")) {
++		dev_err(&pdev->dev, "syscon-bootreg property is missing\n");
++		return -EINVAL;
++	}
++
++	oproc->boot_data->syscon =
++			syscon_regmap_lookup_by_phandle(np, "syscon-bootreg");
++	if (IS_ERR(oproc->boot_data->syscon)) {
++		ret = PTR_ERR(oproc->boot_data->syscon);
++		return ret;
++	}
++
++	if (of_property_read_u32_index(np, "syscon-bootreg", 1,
++				       &oproc->boot_data->boot_reg)) {
++		dev_err(&pdev->dev, "couldn't get the boot register\n");
++		return -EINVAL;
++	}
++
++	if (of_device_is_compatible(np, "ti,dra7-dsp"))
++		oproc->boot_data->boot_reg_shift = 10;
++
++	return 0;
++}
++
++static int omap_rproc_of_get_internal_memories(struct platform_device *pdev,
++					       struct rproc *rproc)
++{
++	static const char * const ipu_mem_names[] = {"l2ram"};
++	static const char * const dra7_dsp_mem_names[] = {"l2ram", "l1pram",
++								"l1dram"};
++	struct device_node *np = pdev->dev.of_node;
++	struct omap_rproc *oproc = rproc->priv;
++	struct device *dev = &pdev->dev;
++	const char * const *mem_names;
++	struct resource *res;
++	int num_mems;
++	const __be32 *addrp;
++	u32 l4_offset = 0;
++	u64 size;
++	int i;
++
++	/* OMAP4 and OMAP5 DSPs do not have support for flat SRAM */
++	if (of_device_is_compatible(np, "ti,omap4-dsp") ||
++	    of_device_is_compatible(np, "ti,omap5-dsp"))
++		return 0;
++
++	/* DRA7 DSPs have two additional SRAMs at L1 level */
++	if (of_device_is_compatible(np, "ti,dra7-dsp")) {
++		mem_names = dra7_dsp_mem_names;
++		num_mems = ARRAY_SIZE(dra7_dsp_mem_names);
++	} else {
++		mem_names = ipu_mem_names;
++		num_mems = ARRAY_SIZE(ipu_mem_names);
++	}
++
++	oproc->mem = devm_kcalloc(dev, num_mems, sizeof(*oproc->mem),
++				  GFP_KERNEL);
++	if (!oproc->mem)
++		return -ENOMEM;
++
++	for (i = 0; i < num_mems; i++) {
++		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
++						   mem_names[i]);
++		oproc->mem[i].cpu_addr = devm_ioremap_resource(dev, res);
++		if (IS_ERR(oproc->mem[i].cpu_addr)) {
++			dev_err(dev, "failed to parse and map %s memory\n",
++				mem_names[i]);
++			return PTR_ERR(oproc->mem[i].cpu_addr);
++		}
++		oproc->mem[i].bus_addr = res->start;
++
++		/*
++		 * The DSPs have the internal memories starting at a fixed
++		 * offset of 0x800000 from address 0, and this corresponds to
++		 * L2RAM. The L3 address view has the L2RAM bus address as the
++		 * starting address for the IP, so the L2RAM memory region needs
++		 * to be processed first, and the device addresses for each
++		 * memory region can be computed using the relative offset
++		 * from this base address.
++		 */
++		if (of_device_is_compatible(np, "ti,dra7-dsp") &&
++		    !strcmp(mem_names[i], "l2ram")) {
++			addrp = of_get_address(dev->of_node, i, &size, NULL);
++			l4_offset = be32_to_cpu(*addrp);
++		}
++		oproc->mem[i].dev_addr =
++			of_device_is_compatible(np, "ti,dra7-dsp") ?
++				res->start - l4_offset +
++				OMAP_RPROC_DSP_LOCAL_MEM_OFFSET :
++				OMAP_RPROC_IPU_L2RAM_DEV_ADDR;
++		oproc->mem[i].size = resource_size(res);
++
++		dev_dbg(dev, "memory %8s: bus addr %pa size 0x%x va %p da 0x%x\n",
++			mem_names[i], &oproc->mem[i].bus_addr,
++			oproc->mem[i].size, oproc->mem[i].cpu_addr,
++			oproc->mem[i].dev_addr);
++	}
++	oproc->num_mems = num_mems;
++
++	return 0;
++}
+ 
+ static int omap_rproc_probe(struct platform_device *pdev)
+ {
+-	struct omap_rproc_pdata *pdata = pdev->dev.platform_data;
++	struct omap_rproc_pdata *pdata = dev_get_platdata(&pdev->dev);
++	struct device_node *np = pdev->dev.of_node;
+ 	struct omap_rproc *oproc;
+ 	struct rproc *rproc;
++	const char *firmware;
++	u32 standby_addr = 0;
++	int num_timers;
+ 	int ret;
+ 
++	if (!np) {
++		dev_err(&pdev->dev, "only DT-based devices are supported\n");
++		return -ENODEV;
++	}
++
++	/*
++	 * self-manage the ordering dependencies between omap_device_enable/idle
++	 * and omap_device_assert/deassert_hardreset API during runtime suspend
++	 * and resume, rather than relying on the order in omap_device layer.
++	 */
++	if (pdev->dev.pm_domain) {
++		dev_dbg(&pdev->dev, "device pm_domain is being reset for this remoteproc device\n");
++		pdev->dev.pm_domain = NULL;
++	}
++	
++	if (!pdata){
++		dev_err(&pdev->dev, "platform data is missing\n");
++		return -ENODEV;
++	}
++
++	if (!pdata->device_enable) {
++		dev_err(&pdev->dev, "platform data is incomplete: device_enable is not populated\n");
++		return -ENODEV;
++	}
++
++	if (!pdata->device_shutdown) {
++		dev_err(&pdev->dev, "platform data is incomplete: device_shutdown is not populated\n");
++		return -ENODEV;
++	}
++
++	firmware = omap_rproc_get_firmware(pdev);
++	if (IS_ERR(firmware))
++		return PTR_ERR(firmware);
++
+ 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "dma_set_coherent_mask: %d\n", ret);
+ 		return ret;
+ 	}
+ 
+-	rproc = rproc_alloc(&pdev->dev, pdata->name, &omap_rproc_ops,
+-			    pdata->firmware, sizeof(*oproc));
++	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev), &omap_rproc_ops,
++			    firmware, sizeof(*oproc));
+ 	if (!rproc)
+ 		return -ENOMEM;
+ 
+@@ -206,14 +1337,88 @@ static int omap_rproc_probe(struct platform_device *pdev)
+ 	/* All existing OMAP IPU and DSP processors have an MMU */
+ 	rproc->has_iommu = true;
+ 
++	ret = omap_rproc_of_get_internal_memories(pdev, rproc);
++	if (ret)
++		goto free_rproc;
++
++	ret = omap_rproc_get_boot_data(pdev, rproc);
++	if (ret)
++		goto free_rproc;
++
++	/*
++	 * Timer nodes are directly used in client nodes as phandles, so
++	 * retrieve the count using appropriate size
++	 */
++	oproc->num_timers = of_property_count_elems_of_size(np, "timers",
++							    sizeof(phandle));
++	if (oproc->num_timers <= 0) {
++		dev_dbg(&pdev->dev, "device does not have timers, status = %d\n",
++			oproc->num_timers);
++		oproc->num_timers = 0;
++	}
++
++#ifdef CONFIG_OMAP_REMOTEPROC_WATCHDOG
++	oproc->num_wd_timers = of_count_phandle_with_args(np, "watchdog-timers",
++							  NULL);
++	if (oproc->num_wd_timers <= 0) {
++		dev_dbg(&pdev->dev, "device does not have watchdog timers, status = %d\n",
++			oproc->num_wd_timers);
++		oproc->num_wd_timers = 0;
++	}
++#endif
++
++	if (oproc->num_timers || oproc->num_wd_timers) {
++		num_timers = oproc->num_timers + oproc->num_wd_timers;
++		oproc->timers = devm_kzalloc(&pdev->dev, sizeof(*oproc->timers)
++					     * num_timers, GFP_KERNEL);
++		if (!oproc->timers) {
++			ret = -ENOMEM;
++			goto free_rproc;
++		}
++
++		dev_dbg(&pdev->dev, "device has %d tick timers and %d watchdog timers\n",
++			oproc->num_timers, oproc->num_wd_timers);
++	}
++
++	init_completion(&oproc->pm_comp);
++	oproc->autosuspend_delay = omap_rproc_get_autosuspend_delay(pdev);
++	if (oproc->autosuspend_delay < 0) {
++		ret = oproc->autosuspend_delay;
++		goto free_rproc;
++	}
++
++	ret = of_property_read_u32(np, "ti,rproc-standby-info", &standby_addr);
++	if (ret || !standby_addr) {
++		ret = !standby_addr ? -EINVAL : ret;
++		goto free_rproc;
++	}
++
++	oproc->standby_addr = devm_ioremap(&pdev->dev, standby_addr,
++					   sizeof(u32));
++	if (!oproc->standby_addr) {
++		ret = -ENOMEM;
++		goto free_rproc;
++	}
++
++	ret = of_reserved_mem_device_init(&pdev->dev);
++	if (ret) {
++		dev_err(&pdev->dev, "device does not have specific CMA pool\n");
++		goto free_rproc;
++	}
++
+ 	platform_set_drvdata(pdev, rproc);
+ 
+ 	ret = rproc_add(rproc);
+ 	if (ret)
+-		goto free_rproc;
++		goto release_mem;
++
++	if (rproc_get_id(rproc) < 0)
++		dev_warn(&pdev->dev, "device does not have an alias id\n");
+ 
+ 	return 0;
+ 
++release_mem:
++	of_reserved_mem_device_release(&pdev->dev);
+ free_rproc:
+ 	rproc_free(rproc);
+ 	return ret;
+@@ -225,15 +1430,24 @@ static int omap_rproc_remove(struct platform_device *pdev)
+ 
+ 	rproc_del(rproc);
+ 	rproc_free(rproc);
++	of_reserved_mem_device_release(&pdev->dev);
+ 
+ 	return 0;
+ }
+ 
++static const struct dev_pm_ops omap_rproc_pm_ops = {
++	SET_SYSTEM_SLEEP_PM_OPS(omap_rproc_suspend, omap_rproc_resume)
++	SET_RUNTIME_PM_OPS(omap_rproc_runtime_suspend,
++			   omap_rproc_runtime_resume, NULL)
++};
++
+ static struct platform_driver omap_rproc_driver = {
+ 	.probe = omap_rproc_probe,
+ 	.remove = omap_rproc_remove,
+ 	.driver = {
+ 		.name = "omap-rproc",
++		.pm = &omap_rproc_pm_ops,
++		.of_match_table = omap_rproc_of_match,
+ 	},
+ };
+ 
+diff --git a/drivers/remoteproc/omap_remoteproc.h b/drivers/remoteproc/omap_remoteproc.h
+index f6d2036d383d..e44458634608 100644
+--- a/drivers/remoteproc/omap_remoteproc.h
++++ b/drivers/remoteproc/omap_remoteproc.h
+@@ -1,35 +1,10 @@
++/* SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause) */
+ /*
+  * Remote processor messaging
+  *
+- * Copyright (C) 2011 Texas Instruments, Inc.
++ * Copyright (C) 2011-2018 Texas Instruments, Inc.
+  * Copyright (C) 2011 Google, Inc.
+  * All rights reserved.
+- *
+- * Redistribution and use in source and binary forms, with or without
+- * modification, are permitted provided that the following conditions
+- * are met:
+- *
+- * * Redistributions of source code must retain the above copyright
+- *   notice, this list of conditions and the following disclaimer.
+- * * Redistributions in binary form must reproduce the above copyright
+- *   notice, this list of conditions and the following disclaimer in
+- *   the documentation and/or other materials provided with the
+- *   distribution.
+- * * Neither the name Texas Instruments nor the names of its
+- *   contributors may be used to endorse or promote products derived
+- *   from this software without specific prior written permission.
+- *
+- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+- * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+- * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+- * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+- * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+- * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+- * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+- * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+- * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  */
+ 
+ #ifndef _OMAP_RPMSG_H
+@@ -56,6 +31,22 @@
+  *
+  * @RP_MBOX_ABORT_REQUEST: a "please crash" request, used for testing the
+  * recovery mechanism (to some extent).
++ *
++ * @RP_MBOX_SUSPEND_AUTO: auto suspend request for the remote processor
++ *
++ * @RP_MBOX_SUSPEND_SYSTEM: system suspend request for the remote processor
++ *
++ * @RP_MBOX_SUSPEND_ACK: successful response from remote processor for a
++ * suspend request
++ *
++ * @RP_MBOX_SUSPEND_CANCEL: a cancel suspend response from a remote processor
++ * on a suspend request
++ *
++ * Introduce new message definitions if any here.
++ *
++ * @RP_MBOX_END_MSG: Indicates end of known/defined messages from remote core
++ * This should be the last definition.
++ *
+  */
+ enum omap_rp_mbox_messages {
+ 	RP_MBOX_READY		= 0xFFFFFF00,
+@@ -64,6 +55,11 @@ enum omap_rp_mbox_messages {
+ 	RP_MBOX_ECHO_REQUEST	= 0xFFFFFF03,
+ 	RP_MBOX_ECHO_REPLY	= 0xFFFFFF04,
+ 	RP_MBOX_ABORT_REQUEST	= 0xFFFFFF05,
++	RP_MBOX_SUSPEND_AUTO	= 0xFFFFFF10,
++	RP_MBOX_SUSPEND_SYSTEM	= 0xFFFFFF11,
++	RP_MBOX_SUSPEND_ACK	= 0xFFFFFF12,
++	RP_MBOX_SUSPEND_CANCEL	= 0xFFFFFF13,
++	RP_MBOX_END_MSG		= 0xFFFFFF14,
+ };
+ 
+ #endif /* _OMAP_RPMSG_H */
+diff --git a/include/clocksource/timer-ti-dm.h b/include/clocksource/timer-ti-dm.h
+new file mode 100644
+index 000000000000..4f310957c21b
+--- /dev/null
++++ b/include/clocksource/timer-ti-dm.h
+@@ -0,0 +1,427 @@
++/*
++ * OMAP Dual-Mode Timers
++ *
++ * Copyright (C) 2010 Texas Instruments Incorporated - http://www.ti.com/
++ * Tarun Kanti DebBarma <tarun.kanti@ti.com>
++ * Thara Gopinath <thara@ti.com>
++ *
++ * Platform device conversion and hwmod support.
++ *
++ * Copyright (C) 2005 Nokia Corporation
++ * Author: Lauri Leukkunen <lauri.leukkunen@nokia.com>
++ * PWM and clock framwork support by Timo Teras.
++ *
++ * This program is free software; you can redistribute it and/or modify it
++ * under the terms of the GNU General Public License as published by the
++ * Free Software Foundation; either version 2 of the License, or (at your
++ * option) any later version.
++ *
++ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
++ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
++ * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN
++ * NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY DIRECT, INDIRECT,
++ * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
++ * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
++ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
++ * THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
++ *
++ * You should have received a copy of the  GNU General Public License along
++ * with this program; if not, write  to the Free Software Foundation, Inc.,
++ * 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++#include <linux/delay.h>
++#include <linux/io.h>
++#include <linux/platform_device.h>
++
++#ifndef __CLOCKSOURCE_DMTIMER_H
++#define __CLOCKSOURCE_DMTIMER_H
++
++/* clock sources */
++#define OMAP_TIMER_SRC_SYS_CLK			0x00
++#define OMAP_TIMER_SRC_32_KHZ			0x01
++#define OMAP_TIMER_SRC_EXT_CLK			0x02
++
++/* timer interrupt enable bits */
++#define OMAP_TIMER_INT_CAPTURE			(1 << 2)
++#define OMAP_TIMER_INT_OVERFLOW			(1 << 1)
++#define OMAP_TIMER_INT_MATCH			(1 << 0)
++
++/* trigger types */
++#define OMAP_TIMER_TRIGGER_NONE			0x00
++#define OMAP_TIMER_TRIGGER_OVERFLOW		0x01
++#define OMAP_TIMER_TRIGGER_OVERFLOW_AND_COMPARE	0x02
++
++/* posted mode types */
++#define OMAP_TIMER_NONPOSTED			0x00
++#define OMAP_TIMER_POSTED			0x01
++
++/* timer capabilities used in hwmod database */
++#define OMAP_TIMER_SECURE				0x80000000
++#define OMAP_TIMER_ALWON				0x40000000
++#define OMAP_TIMER_HAS_PWM				0x20000000
++#define OMAP_TIMER_NEEDS_RESET				0x10000000
++#define OMAP_TIMER_HAS_DSP_IRQ				0x08000000
++
++/*
++ * timer errata flags
++ *
++ * Errata i103/i767 impacts all OMAP3/4/5 devices including AM33xx. This
++ * errata prevents us from using posted mode on these devices, unless the
++ * timer counter register is never read. For more details please refer to
++ * the OMAP3/4/5 errata documents.
++ */
++#define OMAP_TIMER_ERRATA_I103_I767			0x80000000
++
++struct timer_regs {
++	u32 tidr;
++	u32 tier;
++	u32 twer;
++	u32 tclr;
++	u32 tcrr;
++	u32 tldr;
++	u32 ttrg;
++	u32 twps;
++	u32 tmar;
++	u32 tcar1;
++	u32 tsicr;
++	u32 tcar2;
++	u32 tpir;
++	u32 tnir;
++	u32 tcvr;
++	u32 tocr;
++	u32 towr;
++};
++
++struct omap_dm_timer {
++	int id;
++	int irq;
++	struct clk *fclk;
++
++	void __iomem	*io_base;
++	void __iomem	*irq_stat;	/* TISR/IRQSTATUS interrupt status */
++	void __iomem	*irq_ena;	/* irq enable */
++	void __iomem	*irq_dis;	/* irq disable, only on v2 ip */
++	void __iomem	*pend;		/* write pending */
++	void __iomem	*func_base;	/* function register base */
++
++	unsigned long rate;
++	unsigned reserved:1;
++	unsigned posted:1;
++	struct timer_regs context;
++	int (*get_context_loss_count)(struct device *);
++	int ctx_loss_count;
++	int revision;
++	u32 capability;
++	u32 errata;
++	struct platform_device *pdev;
++	struct list_head node;
++};
++
++int omap_dm_timer_reserve_systimer(int id);
++struct omap_dm_timer *omap_dm_timer_request(void);
++struct omap_dm_timer *omap_dm_timer_request_specific(int timer_id);
++struct omap_dm_timer *omap_dm_timer_request_by_cap(u32 cap);
++struct omap_dm_timer *omap_dm_timer_request_by_node(struct device_node *np);
++int omap_dm_timer_free(struct omap_dm_timer *timer);
++void omap_dm_timer_enable(struct omap_dm_timer *timer);
++void omap_dm_timer_disable(struct omap_dm_timer *timer);
++
++int omap_dm_timer_get_irq(struct omap_dm_timer *timer);
++
++u32 omap_dm_timer_modify_idlect_mask(u32 inputmask);
++
++#ifndef CONFIG_ARCH_OMAP1
++struct clk *omap_dm_timer_get_fclk(struct omap_dm_timer *timer);
++#else
++static inline
++struct clk *omap_dm_timer_get_fclk(struct omap_dm_timer *timer)
++{
++	return NULL;
++}
++#endif
++
++int omap_dm_timer_trigger(struct omap_dm_timer *timer);
++int omap_dm_timer_start(struct omap_dm_timer *timer);
++int omap_dm_timer_stop(struct omap_dm_timer *timer);
++
++int omap_dm_timer_set_source(struct omap_dm_timer *timer, int source);
++int omap_dm_timer_set_load(struct omap_dm_timer *timer, int autoreload, unsigned int value);
++int omap_dm_timer_set_load_start(struct omap_dm_timer *timer, int autoreload, unsigned int value);
++int omap_dm_timer_set_match(struct omap_dm_timer *timer, int enable, unsigned int match);
++int omap_dm_timer_set_pwm(struct omap_dm_timer *timer, int def_on, int toggle, int trigger);
++int omap_dm_timer_set_prescaler(struct omap_dm_timer *timer, int prescaler);
++
++int omap_dm_timer_set_int_enable(struct omap_dm_timer *timer, unsigned int value);
++int omap_dm_timer_set_int_disable(struct omap_dm_timer *timer, u32 mask);
++
++unsigned int omap_dm_timer_read_status(struct omap_dm_timer *timer);
++int omap_dm_timer_write_status(struct omap_dm_timer *timer, unsigned int value);
++unsigned int omap_dm_timer_read_counter(struct omap_dm_timer *timer);
++int omap_dm_timer_write_counter(struct omap_dm_timer *timer, unsigned int value);
++
++int omap_dm_timers_active(void);
++
++/*
++ * Do not use the defines below, they are not needed. They should be only
++ * used by dmtimer.c and sys_timer related code.
++ */
++
++/*
++ * The interrupt registers are different between v1 and v2 ip.
++ * These registers are offsets from timer->iobase.
++ */
++#define OMAP_TIMER_ID_OFFSET		0x00
++#define OMAP_TIMER_OCP_CFG_OFFSET	0x10
++
++#define OMAP_TIMER_V1_SYS_STAT_OFFSET	0x14
++#define OMAP_TIMER_V1_STAT_OFFSET	0x18
++#define OMAP_TIMER_V1_INT_EN_OFFSET	0x1c
++
++#define OMAP_TIMER_V2_IRQSTATUS_RAW	0x24
++#define OMAP_TIMER_V2_IRQSTATUS		0x28
++#define OMAP_TIMER_V2_IRQENABLE_SET	0x2c
++#define OMAP_TIMER_V2_IRQENABLE_CLR	0x30
++
++/*
++ * The functional registers have a different base on v1 and v2 ip.
++ * These registers are offsets from timer->func_base. The func_base
++ * is samae as io_base for v1 and io_base + 0x14 for v2 ip.
++ *
++ */
++#define OMAP_TIMER_V2_FUNC_OFFSET		0x14
++
++#define _OMAP_TIMER_WAKEUP_EN_OFFSET	0x20
++#define _OMAP_TIMER_CTRL_OFFSET		0x24
++#define		OMAP_TIMER_CTRL_GPOCFG		(1 << 14)
++#define		OMAP_TIMER_CTRL_CAPTMODE	(1 << 13)
++#define		OMAP_TIMER_CTRL_PT		(1 << 12)
++#define		OMAP_TIMER_CTRL_TCM_LOWTOHIGH	(0x1 << 8)
++#define		OMAP_TIMER_CTRL_TCM_HIGHTOLOW	(0x2 << 8)
++#define		OMAP_TIMER_CTRL_TCM_BOTHEDGES	(0x3 << 8)
++#define		OMAP_TIMER_CTRL_SCPWM		(1 << 7)
++#define		OMAP_TIMER_CTRL_CE		(1 << 6) /* compare enable */
++#define		OMAP_TIMER_CTRL_PRE		(1 << 5) /* prescaler enable */
++#define		OMAP_TIMER_CTRL_PTV_SHIFT	2 /* prescaler value shift */
++#define		OMAP_TIMER_CTRL_POSTED		(1 << 2)
++#define		OMAP_TIMER_CTRL_AR		(1 << 1) /* auto-reload enable */
++#define		OMAP_TIMER_CTRL_ST		(1 << 0) /* start timer */
++#define _OMAP_TIMER_COUNTER_OFFSET	0x28
++#define _OMAP_TIMER_LOAD_OFFSET		0x2c
++#define _OMAP_TIMER_TRIGGER_OFFSET	0x30
++#define _OMAP_TIMER_WRITE_PEND_OFFSET	0x34
++#define		WP_NONE			0	/* no write pending bit */
++#define		WP_TCLR			(1 << 0)
++#define		WP_TCRR			(1 << 1)
++#define		WP_TLDR			(1 << 2)
++#define		WP_TTGR			(1 << 3)
++#define		WP_TMAR			(1 << 4)
++#define		WP_TPIR			(1 << 5)
++#define		WP_TNIR			(1 << 6)
++#define		WP_TCVR			(1 << 7)
++#define		WP_TOCR			(1 << 8)
++#define		WP_TOWR			(1 << 9)
++#define _OMAP_TIMER_MATCH_OFFSET	0x38
++#define _OMAP_TIMER_CAPTURE_OFFSET	0x3c
++#define _OMAP_TIMER_IF_CTRL_OFFSET	0x40
++#define _OMAP_TIMER_CAPTURE2_OFFSET		0x44	/* TCAR2, 34xx only */
++#define _OMAP_TIMER_TICK_POS_OFFSET		0x48	/* TPIR, 34xx only */
++#define _OMAP_TIMER_TICK_NEG_OFFSET		0x4c	/* TNIR, 34xx only */
++#define _OMAP_TIMER_TICK_COUNT_OFFSET		0x50	/* TCVR, 34xx only */
++#define _OMAP_TIMER_TICK_INT_MASK_SET_OFFSET	0x54	/* TOCR, 34xx only */
++#define _OMAP_TIMER_TICK_INT_MASK_COUNT_OFFSET	0x58	/* TOWR, 34xx only */
++
++/* register offsets with the write pending bit encoded */
++#define	WPSHIFT					16
++
++#define OMAP_TIMER_WAKEUP_EN_REG		(_OMAP_TIMER_WAKEUP_EN_OFFSET \
++							| (WP_NONE << WPSHIFT))
++
++#define OMAP_TIMER_CTRL_REG			(_OMAP_TIMER_CTRL_OFFSET \
++							| (WP_TCLR << WPSHIFT))
++
++#define OMAP_TIMER_COUNTER_REG			(_OMAP_TIMER_COUNTER_OFFSET \
++							| (WP_TCRR << WPSHIFT))
++
++#define OMAP_TIMER_LOAD_REG			(_OMAP_TIMER_LOAD_OFFSET \
++							| (WP_TLDR << WPSHIFT))
++
++#define OMAP_TIMER_TRIGGER_REG			(_OMAP_TIMER_TRIGGER_OFFSET \
++							| (WP_TTGR << WPSHIFT))
++
++#define OMAP_TIMER_WRITE_PEND_REG		(_OMAP_TIMER_WRITE_PEND_OFFSET \
++							| (WP_NONE << WPSHIFT))
++
++#define OMAP_TIMER_MATCH_REG			(_OMAP_TIMER_MATCH_OFFSET \
++							| (WP_TMAR << WPSHIFT))
++
++#define OMAP_TIMER_CAPTURE_REG			(_OMAP_TIMER_CAPTURE_OFFSET \
++							| (WP_NONE << WPSHIFT))
++
++#define OMAP_TIMER_IF_CTRL_REG			(_OMAP_TIMER_IF_CTRL_OFFSET \
++							| (WP_NONE << WPSHIFT))
++
++#define OMAP_TIMER_CAPTURE2_REG			(_OMAP_TIMER_CAPTURE2_OFFSET \
++							| (WP_NONE << WPSHIFT))
++
++#define OMAP_TIMER_TICK_POS_REG			(_OMAP_TIMER_TICK_POS_OFFSET \
++							| (WP_TPIR << WPSHIFT))
++
++#define OMAP_TIMER_TICK_NEG_REG			(_OMAP_TIMER_TICK_NEG_OFFSET \
++							| (WP_TNIR << WPSHIFT))
++
++#define OMAP_TIMER_TICK_COUNT_REG		(_OMAP_TIMER_TICK_COUNT_OFFSET \
++							| (WP_TCVR << WPSHIFT))
++
++#define OMAP_TIMER_TICK_INT_MASK_SET_REG				\
++		(_OMAP_TIMER_TICK_INT_MASK_SET_OFFSET | (WP_TOCR << WPSHIFT))
++
++#define OMAP_TIMER_TICK_INT_MASK_COUNT_REG				\
++		(_OMAP_TIMER_TICK_INT_MASK_COUNT_OFFSET | (WP_TOWR << WPSHIFT))
++
++/*
++ * The below are inlined to optimize code size for system timers. Other code
++ * should not need these at all, see
++ * include/linux/platform_data/pwm_omap_dmtimer.h
++ */
++#if defined(CONFIG_ARCH_OMAP1) || defined(CONFIG_ARCH_OMAP2PLUS)
++static inline u32 __omap_dm_timer_read(struct omap_dm_timer *timer, u32 reg,
++						int posted)
++{
++	if (posted)
++		while (readl_relaxed(timer->pend) & (reg >> WPSHIFT))
++			cpu_relax();
++
++	return readl_relaxed(timer->func_base + (reg & 0xff));
++}
++
++static inline void __omap_dm_timer_write(struct omap_dm_timer *timer,
++					u32 reg, u32 val, int posted)
++{
++	if (posted)
++		while (readl_relaxed(timer->pend) & (reg >> WPSHIFT))
++			cpu_relax();
++
++	writel_relaxed(val, timer->func_base + (reg & 0xff));
++}
++
++static inline void __omap_dm_timer_init_regs(struct omap_dm_timer *timer)
++{
++	u32 tidr;
++
++	/* Assume v1 ip if bits [31:16] are zero */
++	tidr = readl_relaxed(timer->io_base);
++	if (!(tidr >> 16)) {
++		timer->revision = 1;
++		timer->irq_stat = timer->io_base + OMAP_TIMER_V1_STAT_OFFSET;
++		timer->irq_ena = timer->io_base + OMAP_TIMER_V1_INT_EN_OFFSET;
++		timer->irq_dis = timer->io_base + OMAP_TIMER_V1_INT_EN_OFFSET;
++		timer->pend = timer->io_base + _OMAP_TIMER_WRITE_PEND_OFFSET;
++		timer->func_base = timer->io_base;
++	} else {
++		timer->revision = 2;
++		timer->irq_stat = timer->io_base + OMAP_TIMER_V2_IRQSTATUS;
++		timer->irq_ena = timer->io_base + OMAP_TIMER_V2_IRQENABLE_SET;
++		timer->irq_dis = timer->io_base + OMAP_TIMER_V2_IRQENABLE_CLR;
++		timer->pend = timer->io_base +
++			_OMAP_TIMER_WRITE_PEND_OFFSET +
++				OMAP_TIMER_V2_FUNC_OFFSET;
++		timer->func_base = timer->io_base + OMAP_TIMER_V2_FUNC_OFFSET;
++	}
++}
++
++/*
++ * __omap_dm_timer_enable_posted - enables write posted mode
++ * @timer:      pointer to timer instance handle
++ *
++ * Enables the write posted mode for the timer. When posted mode is enabled
++ * writes to certain timer registers are immediately acknowledged by the
++ * internal bus and hence prevents stalling the CPU waiting for the write to
++ * complete. Enabling this feature can improve performance for writing to the
++ * timer registers.
++ */
++static inline void __omap_dm_timer_enable_posted(struct omap_dm_timer *timer)
++{
++	if (timer->posted)
++		return;
++
++	if (timer->errata & OMAP_TIMER_ERRATA_I103_I767) {
++		timer->posted = OMAP_TIMER_NONPOSTED;
++		__omap_dm_timer_write(timer, OMAP_TIMER_IF_CTRL_REG, 0, 0);
++		return;
++	}
++
++	__omap_dm_timer_write(timer, OMAP_TIMER_IF_CTRL_REG,
++			      OMAP_TIMER_CTRL_POSTED, 0);
++	timer->context.tsicr = OMAP_TIMER_CTRL_POSTED;
++	timer->posted = OMAP_TIMER_POSTED;
++}
++
++/**
++ * __omap_dm_timer_override_errata - override errata flags for a timer
++ * @timer:      pointer to timer handle
++ * @errata:	errata flags to be ignored
++ *
++ * For a given timer, override a timer errata by clearing the flags
++ * specified by the errata argument. A specific erratum should only be
++ * overridden for a timer if the timer is used in such a way the erratum
++ * has no impact.
++ */
++static inline void __omap_dm_timer_override_errata(struct omap_dm_timer *timer,
++						   u32 errata)
++{
++	timer->errata &= ~errata;
++}
++
++static inline void __omap_dm_timer_stop(struct omap_dm_timer *timer,
++					int posted, unsigned long rate)
++{
++	u32 l;
++
++	l = __omap_dm_timer_read(timer, OMAP_TIMER_CTRL_REG, posted);
++	if (l & OMAP_TIMER_CTRL_ST) {
++		l &= ~0x1;
++		__omap_dm_timer_write(timer, OMAP_TIMER_CTRL_REG, l, posted);
++#ifdef CONFIG_ARCH_OMAP2PLUS
++		/* Readback to make sure write has completed */
++		__omap_dm_timer_read(timer, OMAP_TIMER_CTRL_REG, posted);
++		/*
++		 * Wait for functional clock period x 3.5 to make sure that
++		 * timer is stopped
++		 */
++		udelay(3500000 / rate + 1);
++#endif
++	}
++
++	/* Ack possibly pending interrupt */
++	writel_relaxed(OMAP_TIMER_INT_OVERFLOW, timer->irq_stat);
++}
++
++static inline void __omap_dm_timer_load_start(struct omap_dm_timer *timer,
++						u32 ctrl, unsigned int load,
++						int posted)
++{
++	__omap_dm_timer_write(timer, OMAP_TIMER_COUNTER_REG, load, posted);
++	__omap_dm_timer_write(timer, OMAP_TIMER_CTRL_REG, ctrl, posted);
++}
++
++static inline void __omap_dm_timer_int_enable(struct omap_dm_timer *timer,
++						unsigned int value)
++{
++	writel_relaxed(value, timer->irq_ena);
++	__omap_dm_timer_write(timer, OMAP_TIMER_WAKEUP_EN_REG, value, 0);
++}
++
++static inline unsigned int
++__omap_dm_timer_read_counter(struct omap_dm_timer *timer, int posted)
++{
++	return __omap_dm_timer_read(timer, OMAP_TIMER_COUNTER_REG, posted);
++}
++
++static inline void __omap_dm_timer_write_status(struct omap_dm_timer *timer,
++						unsigned int value)
++{
++	writel_relaxed(value, timer->irq_stat);
++}
++#endif /* CONFIG_ARCH_OMAP1 || CONFIG_ARCH_OMAP2PLUS */
++#endif /* __CLOCKSOURCE_DMTIMER_H */
+diff --git a/include/linux/omap-iommu.h b/include/linux/omap-iommu.h
+index c1aede46718b..27c39641af04 100644
+--- a/include/linux/omap-iommu.h
++++ b/include/linux/omap-iommu.h
+@@ -13,7 +13,12 @@
+ #ifndef _OMAP_IOMMU_H_
+ #define _OMAP_IOMMU_H_
+ 
++struct iommu_domain;
++
+ extern void omap_iommu_save_ctx(struct device *dev);
+ extern void omap_iommu_restore_ctx(struct device *dev);
+ 
++int omap_iommu_domain_deactivate(struct iommu_domain *domain);
++int omap_iommu_domain_activate(struct iommu_domain *domain);
++
+ #endif
+diff --git a/include/linux/platform_data/dmtimer-omap.h b/include/linux/platform_data/dmtimer-omap.h
+index a19b78d826e9..757a0f9e26f9 100644
+--- a/include/linux/platform_data/dmtimer-omap.h
++++ b/include/linux/platform_data/dmtimer-omap.h
+@@ -20,12 +20,50 @@
+ #ifndef __PLATFORM_DATA_DMTIMER_OMAP_H__
+ #define __PLATFORM_DATA_DMTIMER_OMAP_H__
+ 
++struct omap_dm_timer_ops {
++	struct omap_dm_timer *(*request_by_node)(struct device_node *np);
++	struct omap_dm_timer *(*request_specific)(int timer_id);
++	struct omap_dm_timer *(*request)(void);
++
++	int	(*free)(struct omap_dm_timer *timer);
++
++	void	(*enable)(struct omap_dm_timer *timer);
++	void	(*disable)(struct omap_dm_timer *timer);
++
++	int	(*get_irq)(struct omap_dm_timer *timer);
++	int	(*set_int_enable)(struct omap_dm_timer *timer,
++				  unsigned int value);
++	int	(*set_int_disable)(struct omap_dm_timer *timer, u32 mask);
++
++	struct clk *(*get_fclk)(struct omap_dm_timer *timer);
++
++	int	(*start)(struct omap_dm_timer *timer);
++	int	(*stop)(struct omap_dm_timer *timer);
++	int	(*set_source)(struct omap_dm_timer *timer, int source);
++
++	int	(*set_load)(struct omap_dm_timer *timer, int autoreload,
++			    unsigned int value);
++	int	(*set_match)(struct omap_dm_timer *timer, int enable,
++			     unsigned int match);
++	int	(*set_pwm)(struct omap_dm_timer *timer, int def_on,
++			   int toggle, int trigger);
++	int	(*set_prescaler)(struct omap_dm_timer *timer, int prescaler);
++
++	unsigned int (*read_counter)(struct omap_dm_timer *timer);
++	int	(*write_counter)(struct omap_dm_timer *timer,
++				 unsigned int value);
++	unsigned int (*read_status)(struct omap_dm_timer *timer);
++	int	(*write_status)(struct omap_dm_timer *timer,
++				unsigned int value);
++};
++
+ struct dmtimer_platform_data {
+ 	/* set_timer_src - Only used for OMAP1 devices */
+ 	int (*set_timer_src)(struct platform_device *pdev, int source);
+ 	u32 timer_capability;
+ 	u32 timer_errata;
+ 	int (*get_context_loss_count)(struct device *);
++	const struct omap_dm_timer_ops *timer_ops;
+ };
+ 
+ #endif /* __PLATFORM_DATA_DMTIMER_OMAP_H__ */
+diff --git a/include/linux/platform_data/iommu-omap.h b/include/linux/platform_data/iommu-omap.h
+index e8b12dbf6170..6669dc9394da 100644
+--- a/include/linux/platform_data/iommu-omap.h
++++ b/include/linux/platform_data/iommu-omap.h
+@@ -16,4 +16,8 @@ struct iommu_platform_data {
+ 	const char *reset_name;
+ 	int (*assert_reset)(struct platform_device *pdev, const char *name);
+ 	int (*deassert_reset)(struct platform_device *pdev, const char *name);
++	int (*device_enable)(struct platform_device *pdev);
++	int (*device_idle)(struct platform_device *pdev);
++	int (*set_pwrdm_constraint)(struct platform_device *pdev, bool request,
++				    u8 *pwrst);
+ };
+diff --git a/include/linux/platform_data/remoteproc-omap.h b/include/linux/platform_data/remoteproc-omap.h
+index 71a1b2399c48..7e72d010d120 100644
+--- a/include/linux/platform_data/remoteproc-omap.h
++++ b/include/linux/platform_data/remoteproc-omap.h
+@@ -1,59 +1,24 @@
++/* SPDX-License-Identifier: GPL-2.0 */
+ /*
+  * Remote Processor - omap-specific bits
+  *
+- * Copyright (C) 2011 Texas Instruments, Inc.
++ * Copyright (C) 2011-2018 Texas Instruments Incorporated - http://www.ti.com/
+  * Copyright (C) 2011 Google, Inc.
+- *
+- * This program is free software; you can redistribute it and/or
+- * modify it under the terms of the GNU General Public License
+- * version 2 as published by the Free Software Foundation.
+- *
+- * This program is distributed in the hope that it will be useful,
+- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+- * GNU General Public License for more details.
+  */
+ 
+ #ifndef _PLAT_REMOTEPROC_H
+ #define _PLAT_REMOTEPROC_H
+ 
+-struct rproc_ops;
+ struct platform_device;
+ 
+ /*
+  * struct omap_rproc_pdata - omap remoteproc's platform data
+- * @name: the remoteproc's name
+- * @oh_name: omap hwmod device
+- * @oh_name_opt: optional, secondary omap hwmod device
+- * @firmware: name of firmware file to load
+- * @mbox_name: name of omap mailbox device to use with this rproc
+- * @ops: start/stop rproc handlers
+  * @device_enable: omap-specific handler for enabling a device
+  * @device_shutdown: omap-specific handler for shutting down a device
+- * @set_bootaddr: omap-specific handler for setting the rproc boot address
+  */
+ struct omap_rproc_pdata {
+-	const char *name;
+-	const char *oh_name;
+-	const char *oh_name_opt;
+-	const char *firmware;
+-	const char *mbox_name;
+-	const struct rproc_ops *ops;
+ 	int (*device_enable)(struct platform_device *pdev);
+ 	int (*device_shutdown)(struct platform_device *pdev);
+-	void (*set_bootaddr)(u32);
+ };
+ 
+-#if defined(CONFIG_OMAP_REMOTEPROC) || defined(CONFIG_OMAP_REMOTEPROC_MODULE)
+-
+-void __init omap_rproc_reserve_cma(void);
+-
+-#else
+-
+-static inline void __init omap_rproc_reserve_cma(void)
+-{
+-}
+-
+-#endif
+-
+ #endif /* _PLAT_REMOTEPROC_H */
+diff --git a/include/linux/platform_data/remoteproc-pruss.h b/include/linux/platform_data/remoteproc-pruss.h
+new file mode 100644
+index 000000000000..e7ff9319a8e6
+--- /dev/null
++++ b/include/linux/platform_data/remoteproc-pruss.h
+@@ -0,0 +1,25 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Platform data for PRUSS on TI SoCs
++ *
++ * Copyright (C) 2014-2018 Texas Instruments Incorporated - http://www.ti.com/
++ */
++
++#ifndef _PLAT_REMOTEPROC_PRUSS_H
++#define _PLAT_REMOTEPROC_PRUSS_H
++
++struct platform_device;
++
++/**
++ * struct pruss_platform_data - PRUSS platform data
++ * @reset_name: name of the reset
++ * @assert_reset: PRU-specific handler for putting the device in reset
++ * @deassert_reset: PRU-specific handler for releasing the device from reset
++ */
++struct pruss_platform_data {
++	const char *reset_name;
++	int (*assert_reset)(struct platform_device *pdev, const char *name);
++	int (*deassert_reset)(struct platform_device *pdev, const char *name);
++};
++
++#endif /* _PLAT_REMOTEPROC_PRUSS_H */
+diff --git a/include/linux/platform_data/sgx-omap.h b/include/linux/platform_data/sgx-omap.h
+new file mode 100644
+index 000000000000..696fb465244e
+--- /dev/null
++++ b/include/linux/platform_data/sgx-omap.h
+@@ -0,0 +1,29 @@
++/*
++ * SGX Graphics Driver Platform Data
++ *
++ * Copyright (C) 2014-2018 Texas Instruments Incorporated - http://www.ti.com/
++ *	Darren Etheridge <detheridge@ti.com>
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ * This program is distributed "as is" WITHOUT ANY WARRANTY of any
++ * kind, whether express or implied; without even the implied warranty
++ * of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ */
++
++#ifndef __SGX_OMAP_H__
++#define __SGX_OMAP_H__
++
++#include <linux/platform_device.h>
++
++struct gfx_sgx_platform_data {
++	const char *reset_name;
++
++	int (*assert_reset)(struct platform_device *pdev, const char *name);
++	int (*deassert_reset)(struct platform_device *pdev, const char *name);
++};
++
++#endif
